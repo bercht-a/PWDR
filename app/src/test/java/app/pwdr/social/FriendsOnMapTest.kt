@@ -53,4 +53,22 @@ class FriendsOnMapTest {
     fun emptyGivesEmptyCollection() {
         assertEquals(0, JSONObject(FriendsOnMap.geoJson(emptyList())).getJSONArray("features").length())
     }
+
+    @Test
+    fun stateTextShowsSkiingStateWithSpeed() {
+        val down = FriendMarker("a", "Anna", "#fff", 1.0, 1.0, false, "gerade eben", "downhill", 15.0)
+        assertEquals("Abfahrt 54 km/h", FriendsOnMap.stateText(down))
+        assertEquals("Abfahrt", FriendsOnMap.stateText(down.copy(speedMs = null)))
+        assertEquals("Lift", FriendsOnMap.stateText(down.copy(state = "lift")))
+        assertEquals("Pause", FriendsOnMap.stateText(down.copy(state = "pause")))
+        assertEquals(null, FriendsOnMap.stateText(down.copy(state = null)))
+    }
+
+    @Test
+    fun markersCarryStateAndSpeedFromTheLiveRow() {
+        val live = mapOf("a" to LiveRow(userId = "a", lat = 46.4, lon = 7.7, speed = 10.0, state = "downhill", updatedAt = ts(5)))
+        val m = FriendsOnMap.markers(live, listOf(anna), now).single()
+        assertEquals("downhill", m.state)
+        assertEquals(10.0, m.speedMs!!, 0.001)
+    }
 }

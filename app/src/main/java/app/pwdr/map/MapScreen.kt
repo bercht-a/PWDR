@@ -308,7 +308,7 @@ internal fun FriendsLegend(modifier: Modifier = Modifier) {
                             ),
                     )
                     Text(
-                        "${m.name} · ${m.ageText}",
+                        listOfNotNull(m.name, FriendsOnMap.stateText(m).takeIf { !m.stale }, m.ageText).joinToString(" · "),
                         style = MaterialTheme.typography.labelMedium,
                         color = if (m.stale) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                     )

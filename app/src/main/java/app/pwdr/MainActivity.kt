@@ -28,7 +28,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         MapLibre.getInstance(this)
-        Social.start()
+        Social.start(applicationContext)
         Social.handleDeepLink(intent)
 
         // Aufzeichnungen, die nicht sauber beendet wurden (Absturz), nachträglich auswerten.

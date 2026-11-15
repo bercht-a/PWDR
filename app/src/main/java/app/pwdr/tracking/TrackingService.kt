@@ -106,6 +106,8 @@ class TrackingService : Service() {
         TrackingStore.setRecording(true)
         scope.launch {
             sessionId = repository.startSession(System.currentTimeMillis())
+            // Freunde sehen die Position, solange die Aufzeichnung läuft (läuft parallel, Fehler stören nicht).
+            launch { Social.startAutoShare() }
             val dayBase = loadDayBase()
             withContext(Dispatchers.Main) { voice?.begin(dayBase) }
             val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1_000L)

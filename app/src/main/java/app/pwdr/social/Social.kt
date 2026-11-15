@@ -1,5 +1,6 @@
 package app.pwdr.social
 
+import android.content.Context
 import android.content.Intent
 import android.util.Log
 import io.github.jan.supabase.auth.auth
@@ -47,6 +48,7 @@ data class ShareState(
  */
 object Social {
     private const val TAG = "PWDR-Social"
+    private const val AUTO_SHARE_HOURS = 12
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val client get() = Backend.client
 
@@ -86,11 +88,26 @@ object Social {
 
     private var started = false
     private var liveJob: Job? = null
+    private var sharePrefs: SharePrefs? = null
+
+    private val _autoShare = MutableStateFlow(true)
+
+    /** Beim Aufzeichnen automatisch mit allen Freunden teilen (Standard: an). */
+    val autoShare: StateFlow<Boolean> = _autoShare.asStateFlow()
+
+    private val _excluded = MutableStateFlow<Set<String>>(emptySet())
+
+    /** Freunde, mit denen nie geteilt wird. */
+    val excluded: StateFlow<Set<String>> = _excluded.asStateFlow()
 
     /** Einmal beim App-Start aufrufen. */
-    fun start() {
+    fun start(context: Context) {
         if (started) return
         started = true
+        val prefs = SharePrefs(context)
+        sharePrefs = prefs
+        _autoShare.value = prefs.autoShare
+        _excluded.value = prefs.excluded
         scope.launch {
             client.auth.sessionStatus.collect { status ->
                 when (status) {
@@ -207,14 +224,68 @@ object Social {
 
     // ---------------------------------------------------------------- Teilen
 
-    fun startShare(hours: Int, friendIds: Collection<String>) = run("Teilen konnte nicht gestartet werden") {
-        client.postgrest.rpc(
-            "start_share",
-            buildJsonObject {
-                put("p_hours", hours)
-                put("p_friends", JsonArray(friendIds.map { JsonPrimitive(it) }))
-            },
-        )
+    /** Schaltet das automatische Teilen beim Aufzeichnen ein oder aus. Aus beendet eine laufende Freigabe. */
+    fun setAutoShare(on: Boolean) {
+        sharePrefs?.autoShare = on
+        _autoShare.value = on
+        if (!on && _share.value.active) stopShare()
+    }
+
+    /** Teilen mit einem einzelnen Freund ein- oder ausschalten. Wirkt sofort und gilt auch für spätere Aufzeichnungen. */
+    fun setShareWith(friendId: String, enabled: Boolean) {
+        val next = if (enabled) _excluded.value - friendId else _excluded.value + friendId
+        _excluded.value = next
+        sharePrefs?.excluded = next
+        if (_share.value.active) setShareTarget(friendId, enabled)
+    }
+
+    /**
+     * Beginn der Aufzeichnung: teilt mit allen Freunden, die nicht ausgenommen sind (bis zum Stopp, höchstens 12 Stunden).
+     * Ohne Anmeldung, ohne Freunde oder bei ausgeschaltetem automatischem Teilen passiert nichts. Fehler (z. B. kein Netz)
+     * stören die Aufzeichnung nicht.
+     */
+    suspend fun startAutoShare() {
+        if (!_autoShare.value || _authState.value != AuthState.SIGNED_IN) return
+        try {
+            refreshFriends()
+            val ids = ShareTargets.select(_friends.value, _excluded.value)
+            if (ids.isEmpty()) return
+            client.postgrest.rpc(
+                "start_share",
+                buildJsonObject {
+                    put("p_hours", AUTO_SHARE_HOURS)
+                    put("p_friends", JsonArray(ids.map { JsonPrimitive(it) }))
+                },
+            )
+            refreshShare()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Automatisches Teilen nicht gestartet: $e")
+        }
+    }
+
+    /** Nimmt Freunde in die laufende Freigabe auf, die erst nach dem Start dazukamen (z. B. durch eine Einladung). */
+    private suspend fun syncAutoTargets() {
+        val share = _share.value
+        if (!share.active || !_autoShare.value) return
+        val missing = ShareTargets.missing(ShareTargets.select(_friends.value, _excluded.value), share.friendIds)
+        if (missing.isEmpty()) return
+        for (id in missing) {
+            try {
+                client.postgrest.rpc(
+                    "set_share_target",
+                    buildJsonObject {
+                        put("p_friend", id)
+                        put("p_enabled", true)
+                    },
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Freund nicht in die Freigabe aufgenommen: $e")
+            }
+        }
         refreshShare()
     }
 
@@ -296,7 +367,9 @@ object Social {
             _friends.value = client.postgrest.rpc("list_friends").decodeList<Friend>()
         } catch (e: Exception) {
             Log.w(TAG, "Freunde laden: $e")
+            return
         }
+        syncAutoTargets()
     }
 
     private suspend fun refreshShare() {

@@ -11,6 +11,10 @@ data class FriendMarker(
     val lon: Double,
     val stale: Boolean,
     val ageText: String,
+    /** downhill, lift oder pause, sofern bekannt. */
+    val state: String? = null,
+    /** Geschwindigkeit in m/s, sofern bekannt. */
+    val speedMs: Double? = null,
 )
 
 /**
@@ -31,10 +35,18 @@ object FriendsOnMap {
             }
             when (FriendFreshness.of(updated, nowMs)) {
                 Freshness.HIDDEN -> null
-                Freshness.STALE -> FriendMarker(friend.friendId, friend.displayName, friend.color, lat, lon, true, FriendFreshness.ageLabel(updated, nowMs))
-                Freshness.FRESH -> FriendMarker(friend.friendId, friend.displayName, friend.color, lat, lon, false, FriendFreshness.ageLabel(updated, nowMs))
+                Freshness.STALE -> FriendMarker(friend.friendId, friend.displayName, friend.color, lat, lon, true, FriendFreshness.ageLabel(updated, nowMs), row.state, row.speed)
+                Freshness.FRESH -> FriendMarker(friend.friendId, friend.displayName, friend.color, lat, lon, false, FriendFreshness.ageLabel(updated, nowMs), row.state, row.speed)
             }
         }.sortedBy { it.name }
+    }
+
+    /** "Abfahrt 54 km/h", "Lift" oder "Pause" für die Liste auf der Karte. Leer, wenn der Zustand unbekannt ist. */
+    fun stateText(m: FriendMarker): String? = when (m.state) {
+        "downhill" -> m.speedMs?.let { "Abfahrt ${Math.round(it * 3.6)} km/h" } ?: "Abfahrt"
+        "lift" -> "Lift"
+        "pause" -> "Pause"
+        else -> null
     }
 
     /** GeoJSON mit den Eigenschaften name, color und stale (für die Kartenebene). */

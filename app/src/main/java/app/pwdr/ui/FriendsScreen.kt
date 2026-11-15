@@ -27,6 +27,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -51,12 +52,8 @@ import app.pwdr.social.parseInstantMs
 import app.pwdr.tracking.TrackingStore
 import app.pwdr.voice.VoiceSettingsStore
 import kotlinx.coroutines.delay
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 private val COLORS = listOf("#4CC9F0", "#2EC4B6", "#FFD23F", "#FF5A5F", "#B388FF", "#FF9F43")
-private val CLOCK = DateTimeFormatter.ofPattern("HH:mm")
 
 fun parseColor(hex: String, fallback: Color = Color(0xFF4CC9F0)): Color =
     try {
@@ -242,10 +239,11 @@ private fun FriendsContent() {
     val share by Social.share.collectAsState()
     val live by Social.live.collectAsState()
     val inviteCode by Social.inviteCode.collectAsState()
+    val autoShare by Social.autoShare.collectAsState()
+    val excluded by Social.excluded.collectAsState()
     val pendingJoin by Social.pendingJoinCode.collectAsState()
     val recording by TrackingStore.recording.collectAsState()
     val busy by Social.busy.collectAsState()
-    var hours by remember { mutableIntStateOf(8) }
     var code by remember { mutableStateOf("") }
     val voiceStore = remember { VoiceSettingsStore(context) }
     var muted by remember { mutableStateOf(voiceStore.load().mutedFriendIds) }
@@ -255,6 +253,16 @@ private fun FriendsContent() {
         while (true) {
             delay(10_000)
             value = System.currentTimeMillis()
+        }
+    }
+
+    // Beim Öffnen des Tabs aktualisieren. Solange ein Einladungscode angezeigt wird, alle 8 s nachsehen,
+    // damit man sieht, wann der Freund beigetreten ist.
+    LaunchedEffect(Unit) { Social.refresh() }
+    LaunchedEffect(inviteCode) {
+        while (inviteCode != null) {
+            delay(8_000)
+            Social.refresh()
         }
     }
 
@@ -308,9 +316,18 @@ private fun FriendsContent() {
             }
         }
 
-        // Teilen
+        // Teilen: automatisch beim Aufzeichnen, Freunde sehen sich gegenseitig
         item {
             Card {
+                Text("Standort teilen", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Beim Aufzeichnen automatisch mit Freunden teilen",
+                        Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Switch(checked = autoShare, onCheckedChange = Social::setAutoShare)
+                }
                 if (share.active) {
                     val n = share.friendIds.size
                     Text(
@@ -320,30 +337,25 @@ private fun FriendsContent() {
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
-                        "Bis ${Instant.ofEpochMilli(share.expiresAtMs).atZone(ZoneId.systemDefault()).format(CLOCK)} Uhr. " +
-                            if (recording) "Deine Position wird gesendet." else "Gesendet wird, sobald die Aufzeichnung läuft.",
+                        if (recording) "Deine Position wird gesendet, bis du die Aufzeichnung stoppst."
+                        else "Gesendet wird, sobald die Aufzeichnung läuft.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Button(onClick = Social::stopShare, enabled = !busy) { Text("Teilen beenden") }
-                } else {
-                    Text("Standort teilen", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                } else if (autoShare) {
                     Text(
-                        "Teilen ist aus. Wenn du es startest, sehen deine Freunde deine Position, solange die Aufzeichnung läuft " +
-                            "und bis die Zeit abläuft.",
+                        "Sobald du eine Aufzeichnung startest, sehen deine Freunde deine Position auf der Karte, und du siehst " +
+                            "ihre, solange sie aufzeichnen. Mit dem Stopp endet das Teilen. Einzelne Freunde kannst du unten ausnehmen.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(1, 4, 8).forEach { h ->
-                            Chip("$h h", h == hours) { hours = h }
-                        }
-                    }
-                    Button(
-                        onClick = { Social.startShare(hours, accepted.map { it.friendId }) },
-                        enabled = !busy && accepted.isNotEmpty(),
-                    ) { Text("Mit allen Freunden teilen") }
                     if (accepted.isEmpty()) {
                         Text("Lade zuerst einen Freund ein.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                } else {
+                    Text(
+                        "Automatisches Teilen ist aus. Deine Freunde sehen dich nicht.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -358,15 +370,14 @@ private fun FriendsContent() {
                 friend = f,
                 live = live[f.friendId],
                 nowMs = now,
-                shareActive = share.active,
-                sharedWithThem = f.friendId in share.friendIds,
+                shareWithThem = f.friendId !in excluded,
                 announceOn = f.friendId !in muted,
                 onToggleAnnounce = { on ->
                     val next = if (on) muted - f.friendId else muted + f.friendId
                     muted = next
                     voiceStore.save(voiceStore.load().copy(mutedFriendIds = next))
                 },
-                onToggleShare = { Social.setShareTarget(f.friendId, it) },
+                onToggleShare = { Social.setShareWith(f.friendId, it) },
                 onRemove = { Social.removeFriend(f.friendId) },
                 onBlock = { confirmBlock = f },
             )
@@ -439,28 +450,11 @@ private fun FriendsContent() {
 }
 
 @Composable
-private fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
-    Text(
-        text,
-        modifier = Modifier
-            .background(
-                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                RoundedCornerShape(10.dp),
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-        style = MaterialTheme.typography.labelLarge,
-    )
-}
-
-@Composable
 private fun FriendRow(
     friend: Friend,
     live: LiveRow?,
     nowMs: Long,
-    shareActive: Boolean,
-    sharedWithThem: Boolean,
+    shareWithThem: Boolean,
     announceOn: Boolean,
     onToggleAnnounce: (Boolean) -> Unit,
     onToggleShare: (Boolean) -> Unit,
@@ -482,9 +476,10 @@ private fun FriendRow(
                 Text(friend.displayName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                 Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (shareActive) {
-                Switch(checked = sharedWithThem, onCheckedChange = onToggleShare)
-            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Meinen Standort teilen", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Switch(checked = shareWithThem, onCheckedChange = onToggleShare)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Ansage in der Nähe", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

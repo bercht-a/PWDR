@@ -284,9 +284,36 @@ do $$ begin
     perform tests.ok((select count(*) from public.list_friends()) = 0, 'B hat keinen Freund mehr');
 end $$;
 
+-- ---- Beidseitig: auch der Eingeladene kann die Verbindung jederzeit beenden
+select tests.as_user('a0000000-0000-0000-0000-00000000000a');
+create temp table t_inv_b2 as select public.create_invite() as code;
+grant select on t_inv_b2 to authenticated;
+select tests.as_user('b0000000-0000-0000-0000-00000000000b');
+do $$ begin perform tests.ok(public.redeem_invite((select code from t_inv_b2)) = 'a0000000-0000-0000-0000-00000000000a', 'B wird wieder Freund von A'); end $$;
+select tests.as_user('a0000000-0000-0000-0000-00000000000a');
+do $$ begin
+    perform tests.ok((select count(*) from public.list_friends() where friend_id = 'b0000000-0000-0000-0000-00000000000b') = 1, 'A sieht B als Freund (beidseitig)');
+    perform public.start_share(8, array['b0000000-0000-0000-0000-00000000000b'::uuid]);
+    perform public.update_location(46.4, 7.7, 2000, 5, 0, 5, 'downhill');
+end $$;
+select tests.as_user('b0000000-0000-0000-0000-00000000000b');
+do $$ begin
+    perform tests.ok((select count(*) from public.list_friends() where friend_id = 'a0000000-0000-0000-0000-00000000000a') = 1, 'B sieht A als Freund (beidseitig)');
+    perform tests.ok((select count(*) from public.live_locations) = 1, 'B sieht A beim Skifahren');
+    perform public.remove_friend('a0000000-0000-0000-0000-00000000000a');
+    perform tests.ok((select count(*) from public.list_friends()) = 0, 'B hat A entfernt');
+    perform tests.ok((select count(*) from public.live_locations) = 0, 'B sieht A nach dem Entfernen nicht mehr');
+end $$;
+select tests.as_user('a0000000-0000-0000-0000-00000000000a');
+do $$ begin
+    perform tests.ok((select count(*) from public.list_friends()) = 0, 'Auch bei A ist die Verbindung weg (sie gilt für beide)');
+    perform tests.ok((select count(*) from public.share_targets t join public.share_sessions s on s.id = t.session_id where s.ended_at is null) = 0, 'Die Freigabe von A an B ist beendet');
+    perform public.stop_share();
+end $$;
+
 -- ---- Konto löschen
 select tests.as_user('a0000000-0000-0000-0000-00000000000a');
-do $$ begin perform public.update_location(46.4, 7.7, 2000, 5, 0, 5, 'pause'); end $$;
+do $$ begin perform public.start_share(1, '{}'); perform public.update_location(46.4, 7.7, 2000, 5, 0, 5, 'pause'); end $$;
 select public.delete_account();
 select tests.as_admin();
 do $$ begin
