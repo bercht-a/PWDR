@@ -14,11 +14,11 @@ Die Erkennung von Lift und Abfahrt ist der Teil mit dem größten Risiko und bra
 | Bereich | Stand |
 |---|---|
 | Aufzeichnen | Vordergrund-Dienst, Erkennung Lift, Abfahrt, Pause, Barometer-Höhe, große Anzeige für Handschuhe, Stopp per langem Druck |
-| Statistik | Tagesliste, Tagesansicht mit Verlaufsgrafik (Höhenmeter, Distanz, Speed), Abfahrtsliste, GPX-Export |
+| Statistik | Tagesliste, Tagesansicht mit Verlaufsgrafik (Höhenmeter, Distanz, Speed), Abfahrtsliste, GPX-Export, Tag löschen |
 | Karte | swisstopo-Karte, Pisten und Lifte aus OpenStreetMap, gefahrene Spur nach Speed gefärbt, Freunde als Punkte |
 | Pisten und Lifte | Zuordnung der Abfahrten zu Piste und Lift (Lauchernalp und Adelboden-Lenk) |
 | Sprachausgabe | Speed im Intervall, neuer Höchstwert, Ende der Abfahrt, Kopfhörer-Taste, Ansage bei sich nähernden Freunden |
-| Freunde | Anmeldung per E-Mail-Link, Einladung per Code oder Link, Standort teilen mit Ablaufzeit und pro Freund |
+| Freunde | Anmeldung per E-Mail-Link, Einladung per Code oder Link. Die Verbindung gilt für beide, jeder kann sie jederzeit entfernen. Beim Aufzeichnen wird der Standort automatisch mit Freunden geteilt (abschaltbar, pro Freund einstellbar) und sie erscheinen auf der Karte |
 | Gebiet | Lawinenbulletin (SLF), Wetter (MeteoSchweiz über Open-Meteo), Schneehöhen (SLF IMIS), Webcam-Links |
 
 Noch nicht gebaut: Community-Meldungen ("Hier ist viel los"), G-Kräfte, Wochen- und Monatsstatistik, Lawinenregionen als Kartenfläche,
