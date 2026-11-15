@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PWDR</string>
+    <string name="location_permission_title">Standort für die Karte</string>
+    <string name="location_permission_text">PWDR zeigt deine Position auf der Karte. Der Standort verlässt dein Gerät nicht.</string>
+    <string name="location_permission_button">Standort erlauben</string>
+    <string name="location_permission_denied">Ohne Standort bleibt die Karte ohne deine Position. Du kannst die Berechtigung in den Einstellungen erteilen.</string>
+    <string name="map_attribution">Karte: © swisstopo · Pisten: © OpenStreetMap-Mitwirkende</string>
+
+    <string name="tab_map">Karte</string>
+    <string name="tab_record">Aufzeichnen</string>
+    <string name="tab_stats">Statistik</string>
+    <string name="tab_friends">Freunde</string>
+
+    <string name="tracking_channel_name">Aufzeichnung</string>
+    <string name="tracking_notification_title">PWDR zeichnet auf</string>
+    <string name="tracking_notification_text">Deine Fahrt wird aufgezeichnet.</string>
+
+    <string name="record_start">Start</string>
+    <string name="record_stop">Stopp</string>
+    <string name="record_hold_to_stop">Zum Beenden gedrückt halten</string>
+    <string name="record_unit_kmh">km/h</string>
+    <string name="record_ready">Bereit</string>
+    <string name="record_gps_weak">GPS-Signal schwach</string>
+    <string name="activity_downhill">Abfahrt</string>
+    <string name="activity_lift">Lift</string>
+    <string name="activity_pause">Pause</string>
+    <string name="label_vmax">Vmax</string>
+    <string name="label_altitude">Höhe</string>
+    <string name="label_distance">Distanz</string>
+    <string name="label_vert_down">Abwärts</string>
+    <string name="label_runs">Abfahrten</string>
+    <string name="label_lifts">Lifte</string>
+    <string name="label_time">Zeit</string>
+
+    <string name="stats_empty">Noch keine Aufzeichnungen. Starte im Tab "Aufzeichnen".</string>
+    <string name="stats_runs_title">Abfahrten</string>
+    <string name="unknown_piste">Unbekannte Piste</string>
+    <string name="osm_attribution">Pisten- und Liftnamen: © OpenStreetMap-Mitwirkende (ODbL)</string>
+    <string name="track_day">Spur auf Karte</string>
+    <string name="voice_button">Sprache</string>
+    <string name="voice_title">Sprachausgabe</string>
+    <string name="voice_done">Fertig</string>
+    <string name="voice_enabled">Sprachausgabe an</string>
+    <string name="voice_headphones_only">Nur mit Kopfhörer</string>
+    <string name="voice_speed_interval">Speed ansagen alle</string>
+    <string name="voice_off">Aus</string>
+    <string name="voice_record">Neuer Höchstwert</string>
+    <string name="voice_run_end">Ende der Abfahrt</string>
+    <string name="voice_friends">Freunde in der Nähe</string>
+    <string name="voice_test">Test</string>
+    <string name="voice_no_german">Keine deutsche Stimme installiert. In den Android-Einstellungen unter Sprachausgabe eine deutsche Stimme laden.</string>
+    <string name="voice_button_enabled">Kopfhörer-Taste nutzen</string>
+    <string name="voice_button_hint">Kopfhörer-Taste: einmal drücken sagt die Geschwindigkeit an, zweimal die Tageszusammenfassung. Dafür läuft während der Aufzeichnung ein stiller Audio-Strom, das kostet etwas Akku.</string>
+    <string name="back">Zurück</string>
+    <string name="label_vert_up">Aufwärts</string>
+    <string name="label_ski_time">Zeit auf Ski</string>
+    <string name="label_avg_speed">Ø Speed</string>
+    <string name="legend_downhill">Abfahrt</string>
+    <string name="legend_lift">Lift</string>
+    <string name="legend_pause">Pause</string>
+    <string name="stats_no_profile">Keine Punkte für eine Grafik.</string>
+    <string name="stats_export_gpx">GPX teilen</string>
+    <string name="stats_export_failed">Export fehlgeschlagen</string>
+</resources>
