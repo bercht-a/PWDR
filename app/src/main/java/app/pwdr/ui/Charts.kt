@@ -24,18 +24,29 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/** Metriken der Statistik. G-Force folgt mit Phase 8, dafür muss erst der Beschleunigungssensor aufgezeichnet werden. */
+/** Metriken der Statistik. G-Force ist ein Richtwert und hängt von der Trageposition des Handys ab. */
 enum class Metric(val label: String, val unit: String) {
     VERT("Höhenmeter", "m"),
     DIST("Distanz", "m"),
     SPEED("Speed", "km/h"),
+    G("G-Force", "g"),
     ;
+
+    /** Farbe der Metrik, in allen Diagrammen gleich (PLAN.md): Eisblau, Türkis, Orange, Violett. */
+    val color: Color
+        get() = when (this) {
+            VERT -> Color(0xFF4CC9F0)
+            DIST -> Color(0xFF2EC4B6)
+            SPEED -> Color(0xFFFF9F1C)
+            G -> Color(0xFF9B5DE5)
+        }
 
     /** Wert eines Profilpunkts für die Tagesgrafik. */
     fun value(p: ProfilePoint): Double = when (this) {
         VERT -> p.altM
         DIST -> p.cumDistM
         SPEED -> p.speedMs * 3.6
+        G -> p.g ?: 0.0
     }
 }
 
@@ -53,11 +64,11 @@ fun DayChart(
     modifier: Modifier = Modifier,
     height: Dp = 180.dp,
 ) {
-    val downhillColor = MaterialTheme.colorScheme.primary
+    val downhillColor = metric.color
     val liftColor = MaterialTheme.colorScheme.onSurfaceVariant
     val pauseColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
     val gridColor = MaterialTheme.colorScheme.surfaceVariant
-    val markColor = MaterialTheme.colorScheme.secondary
+    val markColor = MaterialTheme.colorScheme.onSurface
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant
     val measurer = rememberTextMeasurer()
     val label = TextStyle(color = textColor, fontSize = 11.sp)
@@ -84,7 +95,7 @@ fun DayChart(
         var vMin = values.min()
         var vMax = values.max()
         if (metric != Metric.VERT) vMin = 0.0
-        if (vMax - vMin < 1.0) vMax = vMin + 1.0
+        if (vMax - vMin < (if (metric == Metric.G) 0.5 else 1.0)) vMax = vMin + (if (metric == Metric.G) 0.5 else 1.0)
         val pad = (vMax - vMin) * 0.05
         val lo = if (metric == Metric.VERT) vMin - pad else vMin
         val hi = vMax + pad
@@ -97,7 +108,7 @@ fun DayChart(
             val v = lo + (hi - lo) * f
             val y = py(v)
             drawLine(gridColor, Offset(left, y), Offset(left + w, y), strokeWidth = 1.dp.toPx())
-            val text = String.format(Locale.GERMAN, "%d", Math.round(v))
+            val text = if (metric == Metric.G) String.format(Locale.GERMAN, "%.1f", v) else String.format(Locale.GERMAN, "%d", Math.round(v))
             val m = measurer.measure(text, label)
             drawText(m, topLeft = Offset(left - m.size.width - 6.dp.toPx(), y - m.size.height / 2f))
         }
@@ -130,12 +141,13 @@ fun DayChart(
             )
         }
 
-        if (metric == Metric.SPEED) {
+        if (metric == Metric.SPEED || metric == Metric.G) {
             val iMax = values.indices.maxBy { values[it] }
             val c = Offset(px(iMax), py(values[iMax]))
             drawCircle(markColor, radius = 4.dp.toPx(), center = c)
             val t = measurer.measure(
-                String.format(Locale.GERMAN, "%d km/h", Math.round(values[iMax])),
+                if (metric == Metric.G) String.format(Locale.GERMAN, "%.1f g", values[iMax])
+                else String.format(Locale.GERMAN, "%d km/h", Math.round(values[iMax])),
                 label.copy(color = markColor),
             )
             val x = (c.x - t.size.width / 2f).coerceIn(left, left + w - t.size.width)

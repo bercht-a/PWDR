@@ -6,7 +6,7 @@ PWDR zeichnet einen Skitag auf, erkennt Lift, Abfahrt und Pause, wertet jede Abf
 Höhenmetern. Dazu kommen Sprachausgabe im Kopfhörer, Freunde live auf der Karte sowie Wetter, Schnee, Lawinenbulletin und Webcams
 für das Skigebiet. Es ist ein Privatprojekt ohne Skipass-Anbindung. Fahrten bleiben auf dem Handy.
 
-**Stand:** Alpha `0.1.0-alpha.3`. Getestet im Emulator und mit simulierten Strecken, **noch nicht auf einer echten Skifahrt**.
+**Stand:** Alpha `0.1.0-alpha.4`. Getestet im Emulator und mit simulierten Strecken, **noch nicht auf einer echten Skifahrt**.
 Die Erkennung von Lift und Abfahrt ist der Teil mit dem größten Risiko und braucht echte Testfahrten.
 
 ## Funktionen
@@ -14,7 +14,7 @@ Die Erkennung von Lift und Abfahrt ist der Teil mit dem größten Risiko und bra
 | Bereich | Stand |
 |---|---|
 | Aufzeichnen | Vordergrund-Dienst, Erkennung Lift, Abfahrt, Pause, Barometer-Höhe, große Anzeige für Handschuhe, Stopp per langem Druck |
-| Statistik | Tagesliste, Tagesansicht mit Verlaufsgrafik (Höhenmeter, Distanz, Speed), Abfahrtsliste, GPX-Export, Tag löschen |
+| Statistik | Zusammenfassung für Woche, Monat und Saison, Tagesliste, Tagesansicht mit Verlaufsgrafik (Höhenmeter, Distanz, Speed, G-Force als Richtwert), Abfahrtsliste, stärkste Kurve auf der Karte, GPX-Export, Tag löschen |
 | Karte | swisstopo-Karte (umschaltbar auf Luftbild und grau, dazu Hangneigung ab 30°), Pisten und Lifte aus OpenStreetMap, gefahrene Spur nach Speed gefärbt, Freunde als Punkte |
 | Pisten und Lifte | Zuordnung der Abfahrten zu Piste und Lift (Lauchernalp und Adelboden-Lenk) |
 | Sprachausgabe | Speed im Intervall, neuer Höchstwert, Ende der Abfahrt, Kopfhörer-Taste, Ansage bei sich nähernden Freunden |
@@ -22,12 +22,12 @@ Die Erkennung von Lift und Abfahrt ist der Teil mit dem größten Risiko und bra
 | Meldungen | Knopf "Melden" auf der Karte: Andrang, Pistenzustand, Neuschnee, Warnung, Après-Ski (Kaffee-Symbol) mit Ablaufzeit. Andere bestätigen oder widersprechen, ohne Namen |
 | Gebiet | Lawinenbulletin (SLF), Wetter (MeteoSchweiz über Open-Meteo), Schneehöhen (SLF IMIS), Webcam-Links |
 
-Noch nicht gebaut: G-Kräfte, Wochen- und Monatsstatistik, Lawinenregionen als Kartenfläche,
+Noch nicht gebaut: Wochen- und Monatsstatistik, Lawinenregionen als Kartenfläche,
 weitere Skigebiete. Alle Entscheidungen, Recherchen und die Roadmap stehen in [PLAN.md](PLAN.md).
 
 ## Alpha-Version installieren
 
-1. Die Datei `pwdr-0.1.0-alpha.3.apk` aufs Handy bringen (Messenger, Cloud-Speicher oder USB).
+1. Die Datei `pwdr-0.1.0-alpha.4.apk` aufs Handy bringen (Messenger, Cloud-Speicher oder USB).
 2. Öffnen und die Installation erlauben. Android fragt einmal, ob Apps aus dieser Quelle installiert werden dürfen.
 3. Beim ersten Aufzeichnen **Standort** ("Beim Verwenden der App") und **Benachrichtigungen** erlauben.
 4. Für lange Aufzeichnungen die Akku-Optimierung für PWDR ausschalten. Manche Hersteller (Xiaomi, Samsung, Huawei) beenden sonst

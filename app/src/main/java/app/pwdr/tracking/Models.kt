@@ -10,6 +10,10 @@ data class Sample(
     val accuracyM: Float = 5f,
     /** Rohe GPS-Höhe, falls altM vom Barometer stammt (nur zur Diagnose und für den GPX-Export). */
     val gpsAltM: Double? = null,
+    /** Höchster G-Wert (Beschleunigungssensor) seit dem vorigen Punkt, null ohne Sensor oder in älteren Aufzeichnungen. */
+    val gMax: Double? = null,
+    /** Mittlerer G-Wert seit dem vorigen Punkt. */
+    val gMean: Double? = null,
 )
 
 enum class Activity { DOWNHILL, LIFT, PAUSE }

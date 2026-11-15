@@ -35,6 +35,8 @@ import app.pwdr.data.PwdrDatabase
 import app.pwdr.data.RunEntity
 import app.pwdr.data.TrackingRepository
 import app.pwdr.tracking.Activity
+import app.pwdr.tracking.Period
+import app.pwdr.tracking.PeriodStats
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -105,6 +107,7 @@ fun StatsScreen(modifier: Modifier = Modifier) {
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                item { PeriodCard(runs, zone) }
                 items(days.entries.toList(), key = { it.key.toString() }) { (date, dayRuns) ->
                     DayCard(date, dayRuns, onClick = { selected = date.toString() })
                 }
@@ -147,6 +150,7 @@ private fun DayCard(date: LocalDate, runs: List<RunEntity>, onClick: () -> Unit)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Summary(stringResource(R.string.label_vert_down), formatMeters(vert))
             Summary(stringResource(R.string.label_vmax), "${kmh(vmax)} km/h")
+            downhills.mapNotNull { it.maxG }.maxOrNull()?.let { Summary("Max. G", "${formatG(it)} g") }
         }
     }
 }
@@ -190,5 +194,72 @@ private fun Summary(label: String, value: String) {
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
         )
+    }
+}
+
+/** Zusammenfassung über Woche, Monat oder Saison (ab 1. Oktober), einschliesslich G-Force. Die Wahl wird gemerkt. */
+@Composable
+private fun PeriodCard(runs: List<RunEntity>, zone: ZoneId) {
+    val context = LocalContext.current
+    var period by remember {
+        mutableStateOf(
+            try {
+                Period.valueOf(context.getSharedPreferences("pwdr_prefs", Context.MODE_PRIVATE).getString("stats_period", null) ?: Period.SEASON.name)
+            } catch (e: Exception) {
+                Period.SEASON
+            },
+        )
+    }
+    val today = remember { LocalDate.now(zone) }
+    val sum = remember(runs, period) { PeriodStats.summarize(runs, period, today, zone) }
+    Column(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)).padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Period.entries.forEach { p ->
+                val on = p == period
+                Text(
+                    text = p.label,
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(if (on) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(9.dp))
+                        .clickable {
+                            period = p
+                            try {
+                                context.getSharedPreferences("pwdr_prefs", Context.MODE_PRIVATE).edit().putString("stats_period", p.name).apply()
+                            } catch (_: Exception) {
+                            }
+                        }
+                        .padding(vertical = 8.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Summary("Tage", sum.days.toString())
+            Summary(stringResource(R.string.label_runs), sum.runs.toString())
+            Summary(stringResource(R.string.label_vert_down), formatMeters(sum.vertDownM))
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Summary(stringResource(R.string.label_distance), formatDistance(sum.distanceM))
+            Summary(stringResource(R.string.label_vmax), "${kmh(sum.vmaxMs)} km/h")
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Summary("Max. G", sum.maxG?.let { "${formatG(it)} g" } ?: "–")
+            Summary("Ø G pro Abfahrt", sum.avgG?.let { "${formatG(it)} g" } ?: "–")
+        }
+        if (sum.maxG == null) {
+            Text(
+                "Noch keine G-Werte in diesem Zeitraum.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }

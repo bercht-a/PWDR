@@ -7,6 +7,8 @@ data class ProfilePoint(
     val speedMs: Double,
     val cumDistM: Double,
     val activity: Activity,
+    /** Höchster G-Wert seit dem vorigen Profilpunkt, null ohne Messwerte. */
+    val g: Double? = null,
 )
 
 /** Zeitbereich eines erkannten Abschnitts, Eingabe für [DayProfile.build]. */
@@ -34,6 +36,7 @@ object DayProfile {
         for (session in sessions) {
             var prev: Sample? = null
             var lastKept: Long? = null
+            var pendingG: Double? = null
             for (s in session) {
                 if (s.accuracyM > maxAccuracyM) continue
                 while (rangeIdx > 0 && sortedRanges[rangeIdx].startMs > s.timeMs) rangeIdx--
@@ -45,9 +48,12 @@ object DayProfile {
                     cum += haversineM(p.lat, p.lon, s.lat, s.lon)
                 }
                 prev = s
+                // G-Spitzen zwischen zwei ausgedünnten Punkten bleiben erhalten
+                s.gMax?.let { g -> pendingG = maxOf(pendingG ?: g, g) }
                 if (lastKept == null || s.timeMs - lastKept >= stepMs) {
-                    out.add(ProfilePoint(s.timeMs, s.altM, s.speedMs, cum, activity))
+                    out.add(ProfilePoint(s.timeMs, s.altM, s.speedMs, cum, activity, pendingG))
                     lastKept = s.timeMs
+                    pendingG = null
                 }
             }
         }

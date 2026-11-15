@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.pwdr.R
 import app.pwdr.data.PwdrDatabase
+import app.pwdr.data.toSample
 import app.pwdr.data.RunEntity
 import app.pwdr.data.TrackingRepository
 import app.pwdr.tracking.TrackingStore
@@ -94,13 +95,24 @@ fun DayDetailScreen(
     var profile by remember { mutableStateOf<List<ProfilePoint>?>(null) }
     val scope = rememberCoroutineScope()
     var confirmDelete by remember { mutableStateOf(false) }
+    var sessionInfo by remember { mutableStateOf<List<app.pwdr.data.SessionEntity>>(emptyList()) }
+    var showGSettings by remember { mutableStateOf(false) }
+
+    LaunchedEffect(runs) {
+        sessionInfo = withContext(Dispatchers.IO) {
+            val repo = TrackingRepository(PwdrDatabase.get(context))
+            runs.map { it.sessionId }.distinct().sorted().mapNotNull { repo.session(it) }
+        }
+    }
+
+    if (showGSettings) GForceSettingsDialog(recording = TrackingStore.recording.value, onDismiss = { showGSettings = false })
 
     LaunchedEffect(runs) {
         profile = withContext(Dispatchers.IO) {
             val db = PwdrDatabase.get(context)
             val sessions = runs.map { it.sessionId }.distinct().sorted().map { id ->
                 db.points().forSession(id).map {
-                    Sample(it.timeMs, it.lat, it.lon, it.altM, it.speedMs, it.accuracyM, it.gpsAltM)
+                    it.toSample()
                 }
             }
             val ranges = runs.map { ActivityRange(Activity.valueOf(it.type), it.startMs, it.endMs) }
@@ -141,6 +153,7 @@ fun DayDetailScreen(
         Metric.VERT -> downhills.maxOfOrNull { it.vertDownM }
         Metric.DIST -> downhills.maxOfOrNull { it.distanceM }
         Metric.SPEED -> downhills.maxOfOrNull { it.maxSpeedMs }
+        Metric.G -> downhills.mapNotNull { it.maxG }.maxOrNull()
     }?.takeIf { it > 0 } ?: 1.0
 
     LazyColumn(
@@ -191,9 +204,34 @@ fun DayDetailScreen(
                         stringResource(R.string.stats_no_profile),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    metric == Metric.G && p.none { it.g != null } -> Text(
+                        "Für diesen Tag gibt es keine G-Werte. Sie werden erst seit Version 0.1.0-alpha.4 aufgezeichnet und fehlen ohne Beschleunigungssensor.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     else -> DayChart(p, metric)
                 }
-                Legend()
+                if (metric == Metric.G) {
+                    Text(
+                        "G-Force ist ein Richtwert. Die Werte hängen davon ab, wo das Handy getragen wird (Hosentasche oder Brust), und lassen sich nur innerhalb der eigenen Fahrten vergleichen. 1,0 g ist die Ruhe.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val strongest = downhills.filter { it.maxG != null }.maxByOrNull { it.maxG ?: 0.0 }
+                    if (strongest != null && (strongest.maxG ?: 0.0) >= app.pwdr.tracking.GForceStats.MIN_PEAK_G) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Stärkste Kurve: ${formatG(strongest.maxG ?: 0.0)} g · ${strongest.name ?: stringResource(R.string.unknown_piste)} · " +
+                                    Instant.ofEpochMilli(strongest.startMs).atZone(zone).format(TIME_FORMAT),
+                                Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = metric.color,
+                            )
+                            TextButton(onClick = { onShowTrack(strongest.id) }) { Text("Auf Karte") }
+                        }
+                    }
+                    TextButton(onClick = { showGSettings = true }) { Text("G-Force-Einstellungen") }
+                }
+                Legend(metric.color)
             }
         }
         item {
@@ -213,6 +251,9 @@ fun DayDetailScreen(
                     LiftRow(run, zone) { onShowTrack(run.id) }
                 }
             }
+        }
+        if (sessionInfo.isNotEmpty()) {
+            item { SessionInfoCard(sessionInfo, zone) }
         }
         item {
             Text(
@@ -250,10 +291,12 @@ private fun DaySummary(downhills: List<RunEntity>, lifts: List<RunEntity>) {
             Tile(Modifier.weight(1f), stringResource(R.string.label_ski_time), formatDuration(skiMs))
             val avg = if (skiMs > 0) dist / (skiMs / 1000.0) else 0.0
             Tile(Modifier.weight(1f), stringResource(R.string.label_avg_speed), "${kmh(avg)} km/h")
-            Spacer(Modifier.weight(1f))
+            val maxG = downhills.mapNotNull { it.maxG }.maxOrNull()
+            Tile(Modifier.weight(1f), "Max. G", maxG?.let { "${formatG(it)} g" } ?: "–")
         }
     }
 }
+
 
 @Composable
 private fun Tile(modifier: Modifier, label: String, value: String) {
@@ -292,9 +335,9 @@ private fun MetricSwitch(selected: Metric, onSelect: (Metric) -> Unit) {
 }
 
 @Composable
-private fun Legend() {
+private fun Legend(downhillColor: androidx.compose.ui.graphics.Color) {
     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        LegendItem(MaterialTheme.colorScheme.primary, stringResource(R.string.legend_downhill))
+        LegendItem(downhillColor, stringResource(R.string.legend_downhill))
         LegendItem(MaterialTheme.colorScheme.onSurfaceVariant, stringResource(R.string.legend_lift))
         LegendItem(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f), stringResource(R.string.legend_pause))
     }
@@ -315,11 +358,13 @@ private fun DownhillRow(no: Int, r: RunEntity, metric: Metric, max: Double, zone
         Metric.VERT -> r.vertDownM
         Metric.DIST -> r.distanceM
         Metric.SPEED -> r.maxSpeedMs
+        Metric.G -> r.maxG ?: 0.0
     }
     val valueText = when (metric) {
         Metric.VERT -> formatMeters(r.vertDownM)
         Metric.DIST -> formatDistance(r.distanceM)
         Metric.SPEED -> "${kmh(r.maxSpeedMs)} km/h"
+        Metric.G -> r.maxG?.let { "${formatG(it)} g" } ?: "–"
     }
     Column(
         Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
@@ -339,12 +384,12 @@ private fun DownhillRow(no: Int, r: RunEntity, metric: Metric, max: Double, zone
                 valueText,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary,
+                color = metric.color,
             )
         }
-        BarFill((value / max).toFloat(), MaterialTheme.colorScheme.primary)
+        BarFill((value / max).toFloat(), metric.color)
         Text(
-            "$time · ${formatDuration(r.endMs - r.startMs)} · ${formatMeters(r.vertDownM)} · ${formatDistance(r.distanceM)} · ${kmh(r.maxSpeedMs)} km/h",
+            "$time · ${formatDuration(r.endMs - r.startMs)} · ${formatMeters(r.vertDownM)} · ${formatDistance(r.distanceM)} · ${kmh(r.maxSpeedMs)} km/h" + (r.maxG?.let { " · ${formatG(it)} g" } ?: ""),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -375,6 +420,37 @@ private fun LiftRow(r: RunEntity, zone: ZoneId, onClick: () -> Unit) {
         Text(
             "${formatDuration(r.endMs - r.startMs)} · +${formatMeters(r.vertUpM)}",
             style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+
+/** Aufzeichnungen des Tages mit G-Force-Einstellung und Akkuverbrauch (zum Vergleichen mit und ohne G-Force). */
+@Composable
+private fun SessionInfoCard(sessions: List<app.pwdr.data.SessionEntity>, zone: ZoneId) {
+    Column(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text("Aufzeichnungen", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        sessions.forEach { s ->
+            val start = Instant.ofEpochMilli(s.startMs).atZone(zone).format(TIME_FORMAT)
+            val end = s.endMs?.let { Instant.ofEpochMilli(it).atZone(zone).format(TIME_FORMAT) } ?: "–"
+            val g = when (s.gForce) {
+                true -> "G-Force an (${app.pwdr.tracking.CarryPosition.of(s.carry).label})"
+                false -> "G-Force aus"
+                null -> "G-Force: keine Angabe"
+            }
+            val battery = app.pwdr.tracking.BatteryText.describe(s.batteryStartPct, s.batteryEndPct, (s.endMs ?: s.startMs) - s.startMs)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("$start – $end · $g", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                battery?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+        }
+        Text(
+            "Der Akkuwert gilt für das ganze Handy (Bildschirm, GPS, Netz), nicht nur für PWDR. Für den Einfluss von G-Force eine Fahrt mit und eine ohne vergleichen.",
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }

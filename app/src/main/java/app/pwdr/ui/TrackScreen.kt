@@ -25,11 +25,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.pwdr.R
 import app.pwdr.data.PwdrDatabase
+import app.pwdr.data.toSample
 import app.pwdr.data.RunEntity
 import app.pwdr.map.TrackLegend
 import app.pwdr.map.TrackMapView
 import app.pwdr.tracking.Activity
 import app.pwdr.tracking.ActivityRange
+import app.pwdr.tracking.GForceStats
 import app.pwdr.tracking.Sample
 import app.pwdr.tracking.TrackBounds
 import app.pwdr.tracking.TrackGeoJson
@@ -52,9 +54,10 @@ fun TrackScreen(
     val context = LocalContext.current
     var json by remember { mutableStateOf<String?>(null) }
     var bounds by remember { mutableStateOf<TrackBounds?>(null) }
+    var peak by remember { mutableStateOf<GForceStats.Peak?>(null) }
 
     LaunchedEffect(runs, runId) {
-        val (j, b) = withContext(Dispatchers.IO) {
+        val (j, b, pk) = withContext(Dispatchers.IO) {
             val db = PwdrDatabase.get(context)
             val selected = if (runId == null) runs else runs.filter { it.id == runId }
             val from = selected.minOfOrNull { it.startMs } ?: 0L
@@ -62,17 +65,18 @@ fun TrackScreen(
             val sessions = selected.map { it.sessionId }.distinct().sorted().map { id ->
                 db.points().forSession(id)
                     .filter { it.timeMs in from..to }
-                    .map { Sample(it.timeMs, it.lat, it.lon, it.altM, it.speedMs, it.accuracyM, it.gpsAltM) }
+                    .map { it.toSample() }
             }
             val ranges = selected.map { ActivityRange(Activity.valueOf(it.type), it.startMs, it.endMs) }
-            TrackGeoJson.build(sessions, ranges) to TrackGeoJson.bounds(sessions)
+            Triple(TrackGeoJson.build(sessions, ranges), TrackGeoJson.bounds(sessions), GForceStats.peakIn(sessions, ranges))
         }
         json = j
         bounds = b
+        peak = pk
     }
 
     Box(modifier.fillMaxSize()) {
-        TrackMapView(trackJson = json, bounds = bounds)
+        TrackMapView(trackJson = json, bounds = bounds, peak = peak)
 
         Surface(
             modifier = Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(8.dp),
@@ -112,6 +116,9 @@ fun TrackScreen(
             }
         }
 
-        TrackLegend(Modifier.align(Alignment.BottomStart).safeDrawingPadding().padding(12.dp))
+        TrackLegend(
+            Modifier.align(Alignment.BottomStart).safeDrawingPadding().padding(12.dp),
+            peakText = peak?.let { "Stärkste Kurve ${formatG(it.g)} g" },
+        )
     }
 }

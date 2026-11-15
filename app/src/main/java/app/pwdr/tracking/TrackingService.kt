@@ -53,6 +53,10 @@ class TrackingService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var recorder = LiveRecorder()
     private var baro = BarometerAltitude()
+    private var gForce = GForceTracker()
+    private var gForceOn = true
+    private var carry = CarryPosition.POCKET
+    private var batteryStart: Int? = null
     private var voice: VoiceController? = null
     private var shareSender: ShareSender? = null
     private var sessionId: Long = -1
@@ -100,12 +104,23 @@ class TrackingService : Service() {
 
         recorder = LiveRecorder()
         baro = BarometerAltitude()
+        val gPrefs = GForcePrefs(this)
+        gForceOn = gPrefs.enabled
+        carry = gPrefs.position
+        gForce = GForceTracker(carry.smoothing)
         startBarometer()
+        if (gForceOn) startAccelerometer()
+        batteryStart = batteryPercent()
         voice = VoiceController(this)
         shareSender = ShareSender(scope)
         TrackingStore.setRecording(true)
         scope.launch {
-            sessionId = repository.startSession(System.currentTimeMillis())
+            sessionId = repository.startSession(
+                System.currentTimeMillis(),
+                gForce = gForceOn,
+                carry = if (gForceOn) carry.key else null,
+                batteryStartPct = batteryStart,
+            )
             // Freunde sehen die Position, solange die Aufzeichnung läuft (läuft parallel, Fehler stören nicht).
             launch { Social.startAutoShare() }
             val dayBase = loadDayBase()
@@ -138,6 +153,33 @@ class TrackingService : Service() {
         (getSystemService(Context.SENSOR_SERVICE) as SensorManager).unregisterListener(pressureListener)
     }
 
+    private val accelListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            if (event.values.size >= 3) gForce.onAccel(event.values[0], event.values[1], event.values[2])
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+    }
+
+    /** Beschleunigungssensor für G-Force (Grundlage, PLAN.md Phase 8). Ohne Sensor gibt es einfach keine G-Werte. */
+    /** Akkustand in Prozent oder null, wenn das System keinen liefert. */
+    private fun batteryPercent(): Int? = try {
+        val bm = getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
+        bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY).takeIf { it in 0..100 }
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun startAccelerometer() {
+        val sm = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val sensor = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) ?: return
+        sm.registerListener(accelListener, sensor, SensorManager.SENSOR_DELAY_GAME)
+    }
+
+    private fun stopAccelerometer() {
+        (getSystemService(Context.SENSOR_SERVICE) as SensorManager).unregisterListener(accelListener)
+    }
+
     private fun onLocation(loc: Location) {
         if (!recording) return
         val accuracy = if (loc.hasAccuracy()) loc.accuracy else 50f
@@ -153,6 +195,7 @@ class TrackingService : Service() {
             }
             else -> 0.0
         }
+        val g = if (gForceOn) gForce.drain() else null
         val sample = Sample(
             timeMs = loc.time,
             lat = loc.latitude,
@@ -161,6 +204,8 @@ class TrackingService : Service() {
             speedMs = speed,
             accuracyM = accuracy,
             gpsAltM = gpsAlt,
+            gMax = g?.max,
+            gMean = g?.mean,
         )
         lastFix = sample
         val live = recorder.onSample(sample)
@@ -198,18 +243,20 @@ class TrackingService : Service() {
         recording = false
         client.removeLocationUpdates(callback)
         stopBarometer()
+        stopAccelerometer()
         voice?.release()
         voice = null
         val batch = buffer.toList()
         buffer.clear()
         val id = sessionId
         val endMs = System.currentTimeMillis()
+        val batteryEnd = batteryPercent()
         scope.launch {
             // Mit dem Ende der Aufzeichnung endet die Freigabe (PLAN.md 5c), die Live-Zeile wird gelöscht.
             Social.stopShareQuietly()
             if (id >= 0) {
                 repository.appendPoints(id, batch)
-                repository.finishSession(id, endMs)
+                repository.finishSession(id, endMs, batteryEnd)
             }
             withContext(Dispatchers.Main) {
                 TrackingStore.setRecording(false)
@@ -223,6 +270,7 @@ class TrackingService : Service() {
     override fun onDestroy() {
         client.removeLocationUpdates(callback)
         stopBarometer()
+        stopAccelerometer()
         voice?.release()
         voice = null
         wakeLock?.let { if (it.isHeld) it.release() }

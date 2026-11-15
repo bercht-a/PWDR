@@ -22,6 +22,13 @@ data class SessionEntity(
     val startMs: Long,
     val endMs: Long? = null,
     val finished: Boolean = false,
+    /** Wurde der Beschleunigungssensor aufgezeichnet? Null bei Aufzeichnungen vor Version 5. */
+    val gForce: Boolean? = null,
+    /** Trageposition (Schlüssel von CarryPosition), null wenn G-Force aus war. */
+    val carry: String? = null,
+    /** Akkustand in Prozent beim Start und beim Stopp, null wenn nicht bekannt. */
+    val batteryStartPct: Int? = null,
+    val batteryEndPct: Int? = null,
 )
 
 /** Roher GPS-Punkt. Wird laufend gespeichert, damit nach einem Absturz nichts verloren geht. */
@@ -37,7 +44,13 @@ data class TrackPointEntity(
     val accuracyM: Float,
     /** Rohe GPS-Höhe; altM ist ab Version 2 barometrisch korrigiert (falls Sensor vorhanden). */
     val gpsAltM: Double? = null,
+    /** Höchster und mittlerer G-Wert seit dem vorigen Punkt (ab Version 4), null ohne Sensor. */
+    val gMax: Double? = null,
+    val gMean: Double? = null,
 )
+
+fun TrackPointEntity.toSample() =
+    app.pwdr.tracking.Sample(timeMs, lat, lon, altM, speedMs, accuracyM, gpsAltM, gMax, gMean)
 
 /** Ein erkannter Abschnitt: Abfahrt, Lift oder Pause (type = Name von Activity). */
 @Entity(indices = [Index("sessionId")])
@@ -56,6 +69,9 @@ data class RunEntity(
     val name: String? = null,
     /** Schwierigkeit der Piste laut OSM (easy, intermediate, advanced ...). */
     val difficulty: String? = null,
+    /** Höchster und mittlerer G-Wert des Abschnitts (ab Version 4), null ohne Messwerte. Richtwert, hängt von der Trageposition ab. */
+    val maxG: Double? = null,
+    val avgG: Double? = null,
 )
 
 /** Skigebiet, dessen OSM-Daten lokal gespeichert sind. */
@@ -165,6 +181,24 @@ private val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+private val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE TrackPointEntity ADD COLUMN gMax REAL")
+        db.execSQL("ALTER TABLE TrackPointEntity ADD COLUMN gMean REAL")
+        db.execSQL("ALTER TABLE RunEntity ADD COLUMN maxG REAL")
+        db.execSQL("ALTER TABLE RunEntity ADD COLUMN avgG REAL")
+    }
+}
+
+private val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE SessionEntity ADD COLUMN gForce INTEGER")
+        db.execSQL("ALTER TABLE SessionEntity ADD COLUMN carry TEXT")
+        db.execSQL("ALTER TABLE SessionEntity ADD COLUMN batteryStartPct INTEGER")
+        db.execSQL("ALTER TABLE SessionEntity ADD COLUMN batteryEndPct INTEGER")
+    }
+}
+
 private val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE TrackPointEntity ADD COLUMN gpsAltM REAL")
@@ -194,7 +228,7 @@ interface RunDao {
         SessionEntity::class, TrackPointEntity::class, RunEntity::class,
         ResortEntity::class, OsmWayEntity::class,
     ],
-    version = 3,
+    version = 5,
     exportSchema = false,
 )
 abstract class PwdrDatabase : RoomDatabase() {
@@ -211,7 +245,7 @@ abstract class PwdrDatabase : RoomDatabase() {
                 context.applicationContext,
                 PwdrDatabase::class.java,
                 "pwdr.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
         }
     }
 }

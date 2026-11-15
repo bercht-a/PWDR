@@ -20,6 +20,9 @@ data class LiveState(
     val currentRunDistM: Double = 0.0,
     val currentRunVertDownM: Double = 0.0,
     val elapsedMs: Long = 0,
+    /** Aktueller und höchster G-Wert dieser Aufzeichnung, null ohne Sensor oder bei ausgeschaltetem G-Force. */
+    val gNow: Double? = null,
+    val maxG: Double? = null,
 )
 
 /** Hält den Zustand der Anzeige und ist unabhängig von Android testbar. */
@@ -27,6 +30,7 @@ class LiveRecorder(private val detector: ActivityDetector = ActivityDetector()) 
 
     private var firstMs: Long? = null
     private var maxSpeed = 0.0
+    private var maxG: Double? = null
     private var recentSpeeds = ArrayDeque<Double>()
 
     private var runCount = 0
@@ -45,6 +49,8 @@ class LiveRecorder(private val detector: ActivityDetector = ActivityDetector()) 
                 if (median <= MAX_PLAUSIBLE_SPEED_MS && median > maxSpeed) maxSpeed = median
             }
         }
+
+        s.gMax?.let { g -> maxG = maxOf(maxG ?: g, g) }
 
         val update = detector.onSample(s)
         for (seg in update.closed) account(seg)
@@ -70,6 +76,8 @@ class LiveRecorder(private val detector: ActivityDetector = ActivityDetector()) 
             currentRunDistM = curDist,
             currentRunVertDownM = curDown,
             elapsedMs = s.timeMs - (firstMs ?: s.timeMs),
+            gNow = s.gMax,
+            maxG = maxG,
         )
     }
 

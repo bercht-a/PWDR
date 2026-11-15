@@ -79,6 +79,8 @@ fun RecordScreen(modifier: Modifier = Modifier) {
 
     var showVoice by remember { mutableStateOf(false) }
     if (showVoice) VoiceSettingsDialog(onDismiss = { showVoice = false })
+    var showG by remember { mutableStateOf(false) }
+    if (showG) GForceSettingsDialog(recording = recording, onDismiss = { showG = false })
 
     Column(
         modifier = modifier
@@ -89,7 +91,7 @@ fun RecordScreen(modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(96.dp))
+            TextButton(onClick = { showG = true }, modifier = Modifier.width(96.dp)) { Text("G-Force") }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 ActivityChip(recording = recording, activity = live.activity)
             }
@@ -201,6 +203,10 @@ private fun StatGrid(live: LiveState, recording: Boolean) {
             Stat(stringResource(R.string.label_runs), v(live.runCount.toString()), Modifier.weight(1f))
             Stat(stringResource(R.string.label_lifts), v(live.liftCount.toString()), Modifier.weight(1f))
             Stat(stringResource(R.string.label_time), v(formatDuration(live.elapsedMs)), Modifier.weight(1f))
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            val g = live.gNow?.let { "${formatG(it)} / ${formatG(live.maxG ?: it)} g" }
+            Stat("G jetzt / Max", v(g ?: dash), Modifier.weight(1f))
         }
     }
 }

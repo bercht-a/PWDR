@@ -53,6 +53,9 @@ private val SPEED_STOPS = listOf(0f to "#440154", 25f to "#21908C", 50f to "#FDE
 private const val LIFT_COLOR = "#8A9AA6"
 private const val SPEED_MAX_KMH = 50
 
+/** Violett wie die Metrik G-Force. */
+private const val PEAK_COLOR = "#9B5DE5"
+
 /**
  * Zeigt eine gefahrene Spur auf der Karte, Abfahrten nach Speed gefärbt, Lifte grau.
  * [trackJson] ist null, solange die Daten laden.
@@ -62,6 +65,7 @@ fun TrackMapView(
     trackJson: String?,
     bounds: TrackBounds?,
     modifier: Modifier = Modifier,
+    peak: app.pwdr.tracking.GForceStats.Peak? = null,
 ) {
     val mapView = rememberMapViewWithLifecycle()
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
@@ -83,6 +87,32 @@ fun TrackMapView(
     )
 
     OsmLayersEffect(style)
+
+    // Stärkste Kurve (höchster G-Wert) als violetter Punkt
+    LaunchedEffect(style, peak) {
+        val st = style ?: return@LaunchedEffect
+        val empty = "{\"type\":\"FeatureCollection\",\"features\":[]}"
+        val json = if (peak == null) empty else String.format(
+            java.util.Locale.ROOT,
+            "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"properties\":{},\"geometry\":{\"type\":\"Point\",\"coordinates\":[%.6f,%.6f]}}]}",
+            peak.lon, peak.lat,
+        )
+        val data = FeatureCollection.fromJson(json)
+        val existing = st.getSourceAs<GeoJsonSource>("gpeak")
+        if (existing != null) {
+            existing.setGeoJson(data)
+            return@LaunchedEffect
+        }
+        st.addSource(GeoJsonSource("gpeak", data))
+        st.addLayer(
+            org.maplibre.android.style.layers.CircleLayer("gpeak-dot", "gpeak").withProperties(
+                PropertyFactory.circleColor(AColor.parseColor(PEAK_COLOR)),
+                PropertyFactory.circleRadius(10f),
+                PropertyFactory.circleStrokeColor(AColor.WHITE),
+                PropertyFactory.circleStrokeWidth(3f),
+            ),
+        )
+    }
 
     LaunchedEffect(style, trackJson, bounds) {
         val st = style ?: return@LaunchedEffect
@@ -138,7 +168,7 @@ private fun setTrack(style: Style, json: String) {
 
 /** Legende der Spurfarben: Farbverlauf für Speed, grau für Lifte. */
 @Composable
-fun TrackLegend(modifier: Modifier = Modifier) {
+fun TrackLegend(modifier: Modifier = Modifier, peakText: String? = null) {
     val gradient = Brush.horizontalGradient(
         SPEED_STOPS.map { (_, c) -> Color(AColor.parseColor(c)) },
     )
@@ -155,6 +185,14 @@ fun TrackLegend(modifier: Modifier = Modifier) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(Modifier.width(160.dp).height(4.dp).background(Color(AColor.parseColor(LIFT_COLOR)), RoundedCornerShape(2.dp)))
                 Text(stringResource(R.string.legend_lift), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+            if (peakText != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(Modifier.width(160.dp), contentAlignment = Alignment.CenterStart) {
+                        Box(Modifier.width(14.dp).height(14.dp).background(Color(AColor.parseColor(PEAK_COLOR)), androidx.compose.foundation.shape.CircleShape))
+                    }
+                    Text(peakText, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
+                }
             }
         }
     }

@@ -3,6 +3,7 @@ package app.pwdr.data
 import androidx.room.withTransaction
 import app.pwdr.osm.WayKind
 import app.pwdr.tracking.Activity
+import app.pwdr.tracking.GForceStats
 import app.pwdr.tracking.GpxExporter
 import app.pwdr.tracking.RunMatcher
 import app.pwdr.tracking.Sample
@@ -11,8 +12,16 @@ import app.pwdr.tracking.SessionAnalyzer
 
 class TrackingRepository(private val db: PwdrDatabase) {
 
-    suspend fun startSession(startMs: Long): Long =
-        db.sessions().insert(SessionEntity(startMs = startMs))
+    suspend fun startSession(
+        startMs: Long,
+        gForce: Boolean? = null,
+        carry: String? = null,
+        batteryStartPct: Int? = null,
+    ): Long = db.sessions().insert(
+        SessionEntity(startMs = startMs, gForce = gForce, carry = carry, batteryStartPct = batteryStartPct),
+    )
+
+    suspend fun session(id: Long): SessionEntity? = db.sessions().get(id)
 
     suspend fun appendPoints(sessionId: Long, samples: List<Sample>) {
         if (samples.isEmpty()) return
@@ -27,16 +36,18 @@ class TrackingRepository(private val db: PwdrDatabase) {
                     speedMs = it.speedMs,
                     accuracyM = it.accuracyM,
                     gpsAltM = it.gpsAltM,
+                    gMax = it.gMax,
+                    gMean = it.gMean,
                 )
             },
         )
     }
 
     /** Wertet die Rohpunkte aus, speichert die Abschnitte und markiert die Aufzeichnung als beendet. */
-    suspend fun finishSession(sessionId: Long, endMs: Long) {
+    suspend fun finishSession(sessionId: Long, endMs: Long, batteryEndPct: Int? = null) {
         val points = db.points().forSession(sessionId)
         val samples = points.map {
-            Sample(it.timeMs, it.lat, it.lon, it.altM, it.speedMs, it.accuracyM, it.gpsAltM)
+            it.toSample()
         }
         val ways = if (samples.isEmpty()) emptyList() else try {
             OsmRepository(db).waysIn(
@@ -54,6 +65,7 @@ class TrackingRepository(private val db: PwdrDatabase) {
                 Activity.PAUSE -> null
             }
             val match = kind?.let { RunMatcher.match(seg.samples, ways, it) }
+            val g = GForceStats.of(seg.samples)
             RunEntity(
                 sessionId = sessionId,
                 type = seg.activity.name,
@@ -66,19 +78,21 @@ class TrackingRepository(private val db: PwdrDatabase) {
                 avgSpeedMs = st.avgSpeedMs,
                 name = match?.name,
                 difficulty = match?.difficulty,
+                maxG = g?.max,
+                avgG = g?.mean,
             )
         }
         db.runs().deleteForSession(sessionId)
         db.runs().insertAll(runs)
         val session = db.sessions().get(sessionId) ?: return
-        db.sessions().update(session.copy(endMs = endMs, finished = true))
+        db.sessions().update(session.copy(endMs = endMs, finished = true, batteryEndPct = batteryEndPct))
     }
 
     /** GPX-Dokument mit allen Punkten der angegebenen Aufzeichnungen (ein Track-Segment je Aufzeichnung). */
     suspend fun exportGpx(sessionIds: List<Long>, name: String): String {
         val tracks = sessionIds.sorted().map { id ->
             db.points().forSession(id).map {
-                Sample(it.timeMs, it.lat, it.lon, it.altM, it.speedMs, it.accuracyM, it.gpsAltM)
+                it.toSample()
             }
         }.filter { it.isNotEmpty() }
         return GpxExporter.toGpx(name, tracks)

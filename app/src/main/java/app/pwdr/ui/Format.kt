@@ -18,3 +18,6 @@ fun formatDuration(ms: Long): String {
     val s = totalSec % 60
     return if (h > 0) String.format(DE, "%d:%02d:%02d", h, min, s) else String.format(DE, "%d:%02d", min, s)
 }
+
+/** G-Wert mit einer Nachkommastelle und Komma, z. B. "1,8". */
+internal fun formatG(g: Double): String = String.format(java.util.Locale.GERMAN, "%.1f", g)
