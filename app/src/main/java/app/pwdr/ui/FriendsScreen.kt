@@ -46,7 +46,9 @@ import app.pwdr.social.AuthState
 import app.pwdr.social.Freshness
 import app.pwdr.social.Friend
 import app.pwdr.social.FriendFreshness
+import app.pwdr.social.FriendsOnMap
 import app.pwdr.social.LiveRow
+import app.pwdr.social.ShareDiagText
 import app.pwdr.social.Social
 import app.pwdr.social.parseInstantMs
 import app.pwdr.tracking.TrackingStore
@@ -356,6 +358,18 @@ private fun FriendsContent() {
                         "Automatisches Teilen ist aus. Deine Freunde sehen dich nicht.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+            }
+        }
+
+        // Status zur Fehlersuche
+        item {
+            val diag by Social.diag.collectAsState()
+            val visible = FriendsOnMap.markers(live, friends, now).size
+            Card {
+                Text("Status", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                ShareDiagText.lines(diag, share.active, recording, visible, live.size, now).forEach {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

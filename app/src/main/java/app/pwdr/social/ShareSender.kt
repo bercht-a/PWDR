@@ -24,7 +24,11 @@ class ShareSender(private val scope: CoroutineScope) {
             lastSessionId = share.sessionId
             scheduler.reset()
         }
-        if (loc.hasAccuracy() && loc.accuracy > MAX_ACCURACY_M) return
+        if (loc.hasAccuracy() && loc.accuracy > MAX_ACCURACY_M) {
+            Social.reportSkip("GPS zu ungenau: ${loc.accuracy.toInt()} m")
+            return
+        }
+        Social.reportSkip(null)
 
         val nearest = nearestFriendM(loc, nowMs)
         if (!scheduler.onFix(loc.latitude, loc.longitude, activity, nearest, nowMs)) return
@@ -41,10 +45,12 @@ class ShareSender(private val scope: CoroutineScope) {
                     accuracy = if (loc.hasAccuracy()) loc.accuracy.toDouble() else null,
                     state = activity.toShareState(),
                 )
+                Social.reportSent()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 val text = e.message.orEmpty()
+                Social.reportSendError(text.ifBlank { e.toString() })
                 if ("no_active_share" in text) Social.markShareEnded()
                 else Log.d(TAG, "Senden fehlgeschlagen: ${text.take(120)}")
             } finally {

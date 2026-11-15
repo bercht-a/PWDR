@@ -38,6 +38,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.pwdr.R
 import app.pwdr.ui.ResortScreen
 import androidx.compose.foundation.clickable
+import app.pwdr.social.AuthState
 import app.pwdr.social.FriendsOnMap
 import app.pwdr.social.Social
 import app.pwdr.ui.parseColor
@@ -95,24 +96,124 @@ fun MapScreen() {
 
     var showResort by remember { mutableStateOf(false) }
 
-    Box(Modifier.fillMaxSize()) {
-        PwdrMap(locationEnabled = permissionGranted)
+    // Kartenansicht (Karte, Luftbild, grau) und Hangneigung, wird gemerkt
+    val mapPrefs = remember { MapPrefs(context) }
+    var base by remember { mutableStateOf(mapPrefs.base) }
+    var slope by remember { mutableStateOf(mapPrefs.slope) }
+    var showLayers by remember { mutableStateOf(false) }
 
-        // Gebietsseite mit Lawinen, Wetter, Schnee und Webcams (PLAN.md 5d)
-        Surface(
-            shape = RoundedCornerShape(8.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .safeDrawingPadding()
-                .padding(8.dp)
-                .clickable { showResort = true },
-        ) {
-            Text(
-                text = "Gebiet",
-                style = MaterialTheme.typography.labelLarge,
+    // Community-Meldungen (PLAN.md 5c, Phase 7)
+    val authState by Social.authState.collectAsState()
+    val reports by Social.reports.collectAsState()
+    var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
+    var showCompose by remember { mutableStateOf(false) }
+    var selectedId by remember { mutableStateOf<String?>(null) }
+    var notice by remember { mutableStateOf<String?>(null) }
+    val signedIn = authState == AuthState.SIGNED_IN
+
+    // Alle 60 s und beim Öffnen die Meldungen rund um den Standort laden (ohne Standort: Kartenmitte).
+    LaunchedEffect(signedIn, mapRef) {
+        val m = mapRef ?: return@LaunchedEffect
+        if (!signedIn) return@LaunchedEffect
+        while (true) {
+            val p = reportCenter(m)
+            if (p != null) Social.loadReports(p.latitude, p.longitude)
+            delay(60_000)
+        }
+    }
+    LaunchedEffect(notice) {
+        if (notice != null) {
+            delay(5_000)
+            notice = null
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        PwdrMap(
+            locationEnabled = permissionGranted,
+            base = base,
+            slope = slope,
+            onMapReady = { mapRef = it },
+            onReportTap = { selectedId = it },
+        )
+
+        if (signedIn) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .safeDrawingPadding()
+                    .padding(12.dp)
+                    .clickable {
+                        val here = userLocation(mapRef)
+                        if (here == null) notice = "Dein Standort ist noch nicht bekannt. Standort erlauben und kurz warten."
+                        else showCompose = true
+                    },
+            ) {
+                Text(
+                    text = "Melden",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                )
+            }
+        }
+
+        notice?.let {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surface,
+                modifier = Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(bottom = 72.dp, start = 16.dp, end = 16.dp),
+            ) {
+                Text(it, Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+
+        if (showCompose) {
+            val here = userLocation(mapRef)
+            if (here == null) showCompose = false else ReportComposeDialog(
+                lat = here.latitude,
+                lon = here.longitude,
+                onDone = { error ->
+                    showCompose = false
+                    notice = error ?: "Meldung ist online."
+                },
+                onDismiss = { showCompose = false },
+            )
+        }
+        selectedId?.let { id ->
+            val report = reports.firstOrNull { it.id == id }
+            val c = reportCenter(mapRef)
+            if (report == null || c == null) selectedId = null else ReportDetailDialog(
+                report = report,
+                lat = c.latitude,
+                lon = c.longitude,
+                onResult = { error ->
+                    if (error != null) notice = error
+                    // Gelöscht oder ausgeblendet: der Dialog schliesst sich, wenn die Meldung aus der Liste verschwindet.
+                },
+                onDismiss = { selectedId = null },
+            )
+        }
+
+        // Oben rechts: Gebietsseite (Lawinen, Wetter, Schnee, Webcams, PLAN.md 5d) und Kartenansicht
+        Column(
+            modifier = Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.End,
+        ) {
+            MapChip("Gebiet") { showResort = true }
+            MapChip("Ansicht") { showLayers = true }
+        }
+
+        if (showLayers) {
+            MapLayersDialog(
+                base = base,
+                slope = slope,
+                onBase = { base = it; mapPrefs.base = it },
+                onSlope = { slope = it; mapPrefs.slope = it },
+                onDismiss = { showLayers = false },
             )
         }
 
@@ -160,6 +261,22 @@ fun MapScreen() {
         }
 
         if (showResort) ResortScreen(onBack = { showResort = false })
+    }
+}
+
+@Composable
+private fun MapChip(text: String, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+        )
     }
 }
 
@@ -367,9 +484,25 @@ private fun addOsmLayers(style: Style, pistesJson: String, liftsJson: String) {
     )
 }
 
+/** Eigener Standort, sofern die Standortanzeige der Karte läuft und eine Position kennt. */
+@SuppressLint("MissingPermission")
+private fun userLocation(map: MapLibreMap?): LatLng? = try {
+    map?.locationComponent?.takeIf { it.isLocationComponentActivated }?.lastKnownLocation
+        ?.let { LatLng(it.latitude, it.longitude) }
+} catch (e: Exception) {
+    null
+}
+
+/** Mitte für die Abfrage der Meldungen: eigener Standort, sonst die Kartenmitte (nur wenn schon hineingezoomt). */
+private fun reportCenter(map: MapLibreMap?): LatLng? {
+    map ?: return null
+    userLocation(map)?.let { return it }
+    return if (map.cameraPosition.zoom >= 9.0) map.cameraPosition.target else null
+}
+
 @SuppressLint("MissingPermission")
 @Composable
-private fun PwdrMap(locationEnabled: Boolean) {
+private fun PwdrMap(locationEnabled: Boolean, base: BaseMap, slope: Boolean, onMapReady: (MapLibreMap) -> Unit, onReportTap: (String) -> Unit) {
     val context = LocalContext.current
     val mapView = rememberMapViewWithLifecycle()
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
@@ -388,17 +521,25 @@ private fun PwdrMap(locationEnabled: Boolean) {
                         .target(SWITZERLAND)
                         .zoom(7.0)
                         .build()
-                    m.setStyle(Style.Builder().fromJson(SwisstopoStyle.json)) { s ->
+                    m.setStyle(Style.Builder().fromJson(SwisstopoStyle.json(base, slope))) { s ->
                         style = s
                     }
+                    m.addOnMapClickListener { latLng ->
+                        val id = reportIdAt(m, latLng)
+                        if (id != null) onReportTap(id)
+                        id != null
+                    }
                     map = m
+                    onMapReady(m)
                 }
             }
         },
     )
 
     OsmLayersEffect(style)
+    ReportsLayerEffect(style)
     FriendsLayerEffect(style)
+    LaunchedEffect(style, base, slope) { style?.let { applyBaseMap(it, base, slope) } }
 
     // Standort-Punkt aktivieren, sobald Berechtigung und Stil vorhanden sind.
     DisposableEffect(map, style, locationEnabled) {

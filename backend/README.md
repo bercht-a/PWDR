@@ -13,6 +13,8 @@ Backend für Freunde und Live-Standort, siehe PLAN.md Abschnitt 5c. Die privaten
    - `0002_live_latlon.sql`: Breite und Länge als einfache Spalten
    - `0003_search_path_extensions.sql`: behebt den Fehler "function gen_random_bytes(integer) does not exist" beim
      Erzeugen eines Einladungscodes. **Wer 0001 und 0002 schon eingespielt hat, führt nur 0003 aus** (wiederholbar).
+   - `0004_reports.sql`: Community-Meldungen (Phase 7)
+   - `0005_report_apres.sql`: Meldungstyp Après-Ski. **Wer 0004 schon eingespielt hat, führt nur 0005 aus** (wiederholbar).
 
    Danach unter *Database > Extensions* prüfen, dass `postgis`, `pgcrypto` und `pg_cron` aktiv sind
    (`pg_cron` ggf. einschalten und die letzte Anweisung von 0001 mit `cron.schedule(...)` einzeln ausführen).
@@ -39,7 +41,7 @@ backend/test/run-tests.sh
 ```
 
 Das Skript startet eine Postgres-Datenbank mit PostGIS, bildet die Supabase-Umgebung nach (Rollen, `auth.users`,
-`auth.uid()`, Erweiterungen im Schema `extensions`), spielt die Migration ein und führt `10_rls_tests.sql` aus. Am Ende steht `ALLE TESTS BESTANDEN`.
+`auth.uid()`, Erweiterungen im Schema `extensions`), spielt die Migration ein und führt `10_rls_tests.sql` und `11_reports_tests.sql` aus. Am Ende steht `ALLE TESTS BESTANDEN`.
 Die Tests prüfen vor allem, was **nicht** sichtbar sein darf: Fremde, Blockierte, abgelaufene und beendete Freigaben.
 
 ## Aufbau
@@ -49,6 +51,8 @@ Die Tests prüfen vor allem, was **nicht** sichtbar sein darf: Fremde, Blockiert
 | `supabase/migrations/0001_social.sql` | Tabellen, Zugriffsregeln (RLS), Funktionen, Aufräumen |
 | `test/00_supabase_stubs.sql` | Nachbau von Rollen und `auth.*` für den lokalen Test |
 | `test/10_rls_tests.sql` | Tests der Zugriffsregeln und Funktionen |
+| `test/11_reports_tests.sql` | Tests der Community-Meldungen |
+| `supabase/migrations/0004_reports.sql` | Meldungen: Tabellen, Funktionen, Aufräumen |
 | `test/run-tests.sh` | Startet Docker-Postgres und führt alles aus |
 
 ## Funktionen (Aufruf aus der App per RPC)
@@ -63,7 +67,11 @@ Die Tests prüfen vor allem, was **nicht** sichtbar sein darf: Fremde, Blockiert
 | `set_share_target(id, an)` | Einzelnen Freund während des Teilens ein- oder ausschalten |
 | `stop_share()` | Teilen beenden, Live-Zeile löschen |
 | `update_location(...)` | Eigene Live-Zeile überschreiben (nur mit aktiver Sitzung) |
-| `delete_account()` | Konto mit allen Daten löschen |
+| `post_report(typ, lat, lon, text)` | Meldung erstellen (höchstens 10 pro Stunde, Ablaufzeit nach Typ) |
+| `list_reports(lat, lon, radius_m)` | Meldungen im Umkreis, ohne abgelaufene und ohne stark widersprochene |
+| `vote_report(id, stimme)` | 1, -1 oder 0 (zurücknehmen), nicht für die eigene Meldung |
+| `delete_report(id)` | Eigene Meldung löschen |
+| `delete_account()` | Konto mit allen Daten löschen (auch Meldungen und Stimmen) |
 
 Lesen läuft direkt über die Tabellen mit Row Level Security (`profiles`, `friendships`, `share_sessions`,
 `share_targets`, `live_locations`). Die Positionen der Freunde kommen per Realtime (Postgres Changes) auf `live_locations`.

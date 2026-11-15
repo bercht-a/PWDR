@@ -49,6 +49,7 @@ data class ShareState(
 object Social {
     private const val TAG = "PWDR-Social"
     private const val AUTO_SHARE_HOURS = 12
+    private const val REPORT_RADIUS_M = 30_000
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val client get() = Backend.client
 
@@ -70,6 +71,11 @@ object Social {
 
     private val _live = MutableStateFlow<Map<String, LiveRow>>(emptyMap())
     val live: StateFlow<Map<String, LiveRow>> = _live.asStateFlow()
+
+    private val _diag = MutableStateFlow(ShareDiag())
+
+    /** Technischer Stand zur Fehlersuche (Tab "Freunde"). */
+    val diag: StateFlow<ShareDiag> = _diag.asStateFlow()
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
@@ -245,11 +251,22 @@ object Social {
      * stören die Aufzeichnung nicht.
      */
     suspend fun startAutoShare() {
-        if (!_autoShare.value || _authState.value != AuthState.SIGNED_IN) return
+        if (!_autoShare.value) {
+            _diag.value = _diag.value.copy(startNote = "automatisches Teilen ist aus")
+            return
+        }
+        if (_authState.value != AuthState.SIGNED_IN) {
+            _diag.value = _diag.value.copy(startNote = "nicht angemeldet")
+            return
+        }
         try {
             refreshFriends()
             val ids = ShareTargets.select(_friends.value, _excluded.value)
-            if (ids.isEmpty()) return
+            if (ids.isEmpty()) {
+                _diag.value = _diag.value.copy(startNote = "keine Freunde ausgewählt")
+                return
+            }
+            _diag.value = _diag.value.copy(startNote = null)
             client.postgrest.rpc(
                 "start_share",
                 buildJsonObject {
@@ -262,7 +279,25 @@ object Social {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "Automatisches Teilen nicht gestartet: $e")
+            _diag.value = _diag.value.copy(startNote = "Fehler: ${e.message.orEmpty().lineSequence().first().take(100)}")
         }
+    }
+
+    /** Position wurde gesendet. */
+    fun reportSent(nowMs: Long = System.currentTimeMillis()) {
+        _diag.value = _diag.value.copy(lastSentMs = nowMs, sentCount = _diag.value.sentCount + 1, lastError = null)
+    }
+
+    fun reportSendError(text: String) {
+        _diag.value = _diag.value.copy(lastError = text.lineSequence().firstOrNull().orEmpty().take(120))
+    }
+
+    fun reportSkip(note: String?) {
+        if (_diag.value.skipNote != note) _diag.value = _diag.value.copy(skipNote = note)
+    }
+
+    private fun setRealtime(text: String) {
+        if (_diag.value.realtime != text) _diag.value = _diag.value.copy(realtime = text)
     }
 
     /** Nimmt Freunde in die laufende Freigabe auf, die erst nach dem Start dazukamen (z. B. durch eine Einladung). */
@@ -398,6 +433,7 @@ object Social {
         _friends.value = emptyList()
         _share.value = ShareState()
         _live.value = emptyMap()
+        _reports.value = emptyList()
         _inviteCode.value = null
     }
 
@@ -409,14 +445,17 @@ object Social {
             while (isActive) {
                 val channel = client.channel("live-friends")
                 try {
+                    setRealtime("verbindet…")
                     val changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") { table = "live_locations" }
                     channel.subscribe(blockUntilSubscribed = true)
+                    setRealtime("verbunden")
                     loadLiveSnapshot()
                     changes.collect { handleChange(it) }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     Log.w(TAG, "Realtime: $e")
+                    setRealtime("Fehler (${e.message.orEmpty().lineSequence().first().take(80)})")
                 } finally {
                     runCatching { client.realtime.removeChannel(channel) }
                 }
@@ -451,6 +490,66 @@ object Social {
     private fun upsertLive(row: LiveRow, me: String?) {
         if (row.userId == me) return
         _live.value = _live.value + (row.userId to row)
+    }
+
+    // ---------------------------------------------------------------- Meldungen
+
+    private val _reports = MutableStateFlow<List<ReportRow>>(emptyList())
+
+    /** Meldungen im Umkreis der letzten Abfrage. */
+    val reports: StateFlow<List<ReportRow>> = _reports.asStateFlow()
+
+    /** Lädt die Meldungen im Umkreis. Ohne Anmeldung oder Netz bleibt die letzte Liste stehen. */
+    suspend fun loadReports(lat: Double, lon: Double) {
+        if (_authState.value != AuthState.SIGNED_IN) return
+        try {
+            _reports.value = client.postgrest.rpc(
+                "list_reports",
+                buildJsonObject {
+                    put("p_lat", lat)
+                    put("p_lon", lon)
+                    put("p_radius_m", REPORT_RADIUS_M)
+                },
+            ).decodeList<ReportRow>()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Meldungen laden: $e")
+        }
+    }
+
+    /** Gibt null zurück, wenn es geklappt hat, sonst einen Text für die Anzeige. */
+    suspend fun postReport(type: ReportType, lat: Double, lon: Double, text: String): String? = reportCall {
+        client.postgrest.rpc(
+            "post_report",
+            buildJsonObject {
+                put("p_type", type.key)
+                put("p_lat", lat)
+                put("p_lon", lon)
+                put("p_text", text.trim().take(ReportsOnMap.MAX_TEXT).ifEmpty { null })
+            },
+        )
+        loadReports(lat, lon)
+    }
+
+    suspend fun voteReport(id: String, vote: Int, lat: Double, lon: Double): String? = reportCall {
+        client.postgrest.rpc("vote_report", buildJsonObject { put("p_id", id); put("p_vote", vote) })
+        loadReports(lat, lon)
+    }
+
+    suspend fun deleteReport(id: String, lat: Double, lon: Double): String? = reportCall {
+        client.postgrest.rpc("delete_report", buildJsonObject { put("p_id", id) })
+        loadReports(lat, lon)
+    }
+
+    private suspend fun reportCall(block: suspend () -> Unit): String? = try {
+        block()
+        null
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "Meldung: $e")
+        ReportsOnMap.errorText(e.message.orEmpty().ifBlank { e.toString() })
     }
 
     // ---------------------------------------------------------------- Hilfen

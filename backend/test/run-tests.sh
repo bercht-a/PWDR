@@ -26,4 +26,8 @@ run 00_supabase_stubs.sql
 run ../supabase/migrations/0001_social.sql
 run ../supabase/migrations/0002_live_latlon.sql
 run ../supabase/migrations/0003_search_path_extensions.sql
+run ../supabase/migrations/0004_reports.sql
+run ../supabase/migrations/0005_report_apres.sql
+run ../supabase/migrations/0005_report_apres.sql
 run 10_rls_tests.sql
+run 11_reports_tests.sql
