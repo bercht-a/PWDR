@@ -11,7 +11,7 @@ create or replace function public.update_location(
     p_lat double precision, p_lon double precision,
     p_alt real, p_speed real, p_heading real, p_accuracy real, p_state text
 ) returns void
-language plpgsql security definer set search_path = public, pg_temp as $$
+language plpgsql security definer set search_path = public, extensions, pg_temp as $$
 declare
     uid uuid := auth.uid();
     sid uuid;

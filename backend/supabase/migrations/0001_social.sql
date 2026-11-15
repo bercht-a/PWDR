@@ -74,7 +74,7 @@ create table public.live_locations (
 -- ---------------------------------------------------------------- Hilfsfunktionen (umgehen RLS gezielt)
 
 create function public.is_friend(a uuid, b uuid) returns boolean
-language sql stable security definer set search_path = public, pg_temp as $$
+language sql stable security definer set search_path = public, extensions, pg_temp as $$
     select exists (
         select 1 from public.friendships f
         where f.user_a = least(a, b) and f.user_b = greatest(a, b) and f.status = 'accepted'
@@ -84,7 +84,7 @@ $$;
 -- Darf der Aufrufer die Live-Position des Besitzers sehen?
 -- Aktive Sitzung, Aufrufer ist freigegeben, und die Freundschaft ist akzeptiert (nicht blockiert).
 create function public.can_view_location(owner uuid, sess uuid) returns boolean
-language sql stable security definer set search_path = public, pg_temp as $$
+language sql stable security definer set search_path = public, extensions, pg_temp as $$
     select auth.uid() is not null and (
         owner = auth.uid()
         or exists (
@@ -144,7 +144,7 @@ revoke delete, truncate on public.profiles from authenticated;
 -- ---------------------------------------------------------------- Funktionen für den Client
 
 create function public.create_invite() returns text
-language plpgsql security definer set search_path = public, pg_temp as $$
+language plpgsql security definer set search_path = public, extensions, pg_temp as $$
 declare
     uid      uuid := auth.uid();
     alphabet constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';  -- ohne 0, O, 1, I
@@ -171,7 +171,7 @@ end $$;
 
 -- Gibt die ID des Einladenden zurück, bei ungültigem Code null (zählt als Fehlversuch).
 create function public.redeem_invite(p_code text) returns uuid
-language plpgsql security definer set search_path = public, pg_temp as $$
+language plpgsql security definer set search_path = public, extensions, pg_temp as $$
 declare
     uid uuid := auth.uid();
     inv public.invites;
@@ -206,14 +206,14 @@ end $$;
 
 -- Beendet alle Freigaben zwischen den beiden in beide Richtungen.
 create function public.revoke_sharing_between(a uuid, b uuid) returns void
-language sql security definer set search_path = public, pg_temp as $$
+language sql security definer set search_path = public, extensions, pg_temp as $$
     delete from public.share_targets t using public.share_sessions s
     where t.session_id = s.id
       and ((s.user_id = a and t.friend_id = b) or (s.user_id = b and t.friend_id = a));
 $$;
 
 create function public.remove_friend(p_friend uuid) returns void
-language plpgsql security definer set search_path = public, pg_temp as $$
+language plpgsql security definer set search_path = public, extensions, pg_temp as $$
 declare uid uuid := auth.uid();
 begin
     if uid is null then raise exception 'not_authenticated' using errcode = '28000'; end if;
@@ -223,7 +223,7 @@ begin
 end $$;
 
 create function public.block_friend(p_friend uuid) returns void
-language plpgsql security definer set search_path = public, pg_temp as $$
+language plpgsql security definer set search_path = public, extensions, pg_temp as $$
 declare uid uuid := auth.uid();
 begin
     if uid is null then raise exception 'not_authenticated' using errcode = '28000'; end if;
@@ -236,7 +236,7 @@ end $$;
 
 -- Hebt nur eine eigene Blockierung auf. Danach besteht keine Freundschaft, eine neue Einladung ist nötig.
 create function public.unblock_friend(p_friend uuid) returns void
-language plpgsql security definer set search_path = public, pg_temp as $$
+language plpgsql security definer set search_path = public, extensions, pg_temp as $$
 declare uid uuid := auth.uid();
 begin
     if uid is null then raise exception 'not_authenticated' using errcode = '28000'; end if;
@@ -247,7 +247,7 @@ end $$;
 
 create function public.list_friends()
 returns table (friend_id uuid, display_name text, spoken_name text, color text, status text)
-language sql stable security definer set search_path = public, pg_temp as $$
+language sql stable security definer set search_path = public, extensions, pg_temp as $$
     select p.id, p.display_name, p.spoken_name, p.color, f.status
     from public.friendships f
     join public.profiles p on p.id = case when f.user_a = auth.uid() then f.user_b else f.user_a end
@@ -257,7 +257,7 @@ $$;
 
 -- Startet das Teilen. p_hours 1 bis 12 (null = 12), nur akzeptierte Freunde aus p_friends werden freigegeben.
 create function public.start_share(p_hours integer, p_friends uuid[]) returns uuid
-language plpgsql security definer set search_path = public, pg_temp as $$
+language plpgsql security definer set search_path = public, extensions, pg_temp as $$
 declare
     uid uuid := auth.uid();
     sid uuid;
@@ -276,7 +276,7 @@ end $$;
 
 -- Gibt einen Freund während des Teilens frei oder nimmt die Freigabe zurück.
 create function public.set_share_target(p_friend uuid, p_enabled boolean) returns void
-language plpgsql security definer set search_path = public, pg_temp as $$
+language plpgsql security definer set search_path = public, extensions, pg_temp as $$
 declare
     uid uuid := auth.uid();
     sid uuid;
@@ -294,7 +294,7 @@ begin
 end $$;
 
 create function public.stop_share() returns void
-language plpgsql security definer set search_path = public, pg_temp as $$
+language plpgsql security definer set search_path = public, extensions, pg_temp as $$
 declare uid uuid := auth.uid();
 begin
     if uid is null then raise exception 'not_authenticated' using errcode = '28000'; end if;
@@ -307,7 +307,7 @@ create function public.update_location(
     p_lat double precision, p_lon double precision,
     p_alt real, p_speed real, p_heading real, p_accuracy real, p_state text
 ) returns void
-language plpgsql security definer set search_path = public, pg_temp as $$
+language plpgsql security definer set search_path = public, extensions, pg_temp as $$
 declare
     uid uuid := auth.uid();
     sid uuid;
@@ -329,7 +329,7 @@ end $$;
 
 -- Löscht das Konto samt Profil, Freundschaften, Freigaben und Live-Daten (über ON DELETE CASCADE).
 create function public.delete_account() returns void
-language plpgsql security definer set search_path = public, pg_temp as $$
+language plpgsql security definer set search_path = public, extensions, pg_temp as $$
 begin
     if auth.uid() is null then raise exception 'not_authenticated' using errcode = '28000'; end if;
     delete from auth.users where id = auth.uid();
@@ -337,7 +337,7 @@ end $$;
 
 -- Aufräumen, vom Zeitplan aufgerufen (nicht vom Client).
 create function public.cleanup_expired() returns void
-language plpgsql security definer set search_path = public, pg_temp as $$
+language plpgsql security definer set search_path = public, extensions, pg_temp as $$
 begin
     update public.share_sessions set ended_at = least(now(), expires_at)
         where ended_at is null and expires_at <= now();

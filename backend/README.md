@@ -7,11 +7,15 @@ Backend für Freunde und Live-Standort, siehe PLAN.md Abschnitt 5c. Die privaten
 1. Auf supabase.com ein Konto anlegen und ein neues Projekt erstellen.
    - Region: **Frankfurt (eu-central-1)** oder Zürich, falls angeboten.
    - Datenbank-Passwort sicher aufbewahren, die App braucht es nicht.
-2. **Datenbank einrichten:** Im Projekt unter *SQL Editor* den Inhalt von
-   `backend/supabase/migrations/0001_social.sql` einfügen und ausführen. Es darf kein Fehler erscheinen.
+2. **Datenbank einrichten:** Im Projekt unter *SQL Editor* nacheinander die drei Dateien aus `backend/supabase/migrations/`
+   einfügen und je mit *Run* ausführen. Es darf kein Fehler erscheinen.
+   - `0001_social.sql`: Tabellen, Zugriffsregeln, Funktionen
+   - `0002_live_latlon.sql`: Breite und Länge als einfache Spalten
+   - `0003_search_path_extensions.sql`: behebt den Fehler "function gen_random_bytes(integer) does not exist" beim
+     Erzeugen eines Einladungscodes. **Wer 0001 und 0002 schon eingespielt hat, führt nur 0003 aus** (wiederholbar).
+
    Danach unter *Database > Extensions* prüfen, dass `postgis`, `pgcrypto` und `pg_cron` aktiv sind
-   (`pg_cron` ggf. einschalten und das Skript ein zweites Mal ausführen lassen, oder die letzte Anweisung
-   `cron.schedule(...)` einzeln ausführen).
+   (`pg_cron` ggf. einschalten und die letzte Anweisung von 0001 mit `cron.schedule(...)` einzeln ausführen).
 3. **Anmeldung per E-Mail-Link:** *Authentication > Providers > Email* einschalten, "Confirm email" an lassen.
    Unter *Authentication > URL Configuration* bei "Redirect URLs" eintragen: `pwdr://auth`
    (Site URL kann dieselbe Adresse sein). Das ist die Adresse, über die der Link aus der E-Mail in die App zurückführt.
@@ -35,7 +39,7 @@ backend/test/run-tests.sh
 ```
 
 Das Skript startet eine Postgres-Datenbank mit PostGIS, bildet die Supabase-Umgebung nach (Rollen, `auth.users`,
-`auth.uid()`), spielt die Migration ein und führt `10_rls_tests.sql` aus. Am Ende steht `ALLE TESTS BESTANDEN`.
+`auth.uid()`, Erweiterungen im Schema `extensions`), spielt die Migration ein und führt `10_rls_tests.sql` aus. Am Ende steht `ALLE TESTS BESTANDEN`.
 Die Tests prüfen vor allem, was **nicht** sichtbar sein darf: Fremde, Blockierte, abgelaufene und beendete Freigaben.
 
 ## Aufbau
