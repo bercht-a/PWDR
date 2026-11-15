@@ -67,6 +67,40 @@ Die Release-APK wird mit einem eigenen Schlüssel signiert. Der Schlüssel liegt
 Ohne diese Datei baut `assembleRelease` eine unsignierte APK. **Den Schlüssel sichern:** Geht er verloren, lässt sich eine installierte
 Alpha nicht mehr aktualisieren, man müsste sie deinstallieren (die Fahrten gehen dabei verloren).
 
+## Automatisch bauen und veröffentlichen (CI/CD)
+
+GitHub Actions baut und veröffentlicht das Projekt. Die Workflows liegen in `.github/workflows/`.
+
+| Workflow | Wann | Was |
+|---|---|---|
+| `ci.yml` | Push auf `main`, Pull Request | Unit-Tests, Debug-APK (als Artefakt, 14 Tage), Backend-Zugriffsregeln in Postgres |
+| `release.yml` | Tag `v*`, z. B. `v0.1.0-alpha.2` | Tests, signierte Release-APK, GitHub-Release mit APK und Prüfsumme |
+
+**Release veröffentlichen:**
+
+```
+git tag -a v0.1.0-alpha.2 -m "PWDR 0.1.0-alpha.2"
+git push origin main
+git push origin v0.1.0-alpha.2
+```
+
+Der Workflow nimmt Version und Versionscode aus dem Tag und dem Lauf (`100 + Laufnummer`, damit Updates immer eine höhere Nummer haben).
+Tags mit `-alpha`, `-beta` oder `-rc` werden als Vorabversion markiert. Die APK hängt am Release (Reiter "Releases" des Repositories),
+daneben liegt die Datei `.sha256` zur Prüfung.
+
+**Einmalig einrichten:** Im Repository unter *Settings > Secrets and variables > Actions* vier Secrets anlegen:
+
+| Secret | Inhalt |
+|---|---|
+| `KEYSTORE_BASE64` | Die Schlüsseldatei als Text. In PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\.pwdr\pwdr-alpha.jks")) \| Set-Clipboard`, dann einfügen |
+| `KEYSTORE_PASSWORD` | `storePassword` aus `keystore.properties` |
+| `KEY_ALIAS` | `keyAlias` aus `keystore.properties` (`pwdr-alpha`) |
+| `KEY_PASSWORD` | `keyPassword` aus `keystore.properties` |
+
+Die Secrets sind für das Repository verschlüsselt und erscheinen nicht in den Protokollen. Fehlt eines, bricht der Release-Workflow mit einer
+klaren Meldung ab. Der Schlüssel wird nach dem Lauf vom Runner gelöscht. Wer Schreibrechte auf das Repository hat, kann Workflows ändern und
+so an den Schlüssel kommen: das Repository privat halten und nur Vertrauten Schreibzugriff geben.
+
 ## Backend (Freunde und Live-Standort)
 
 Supabase (Postgres, Anmeldung, Realtime). Schema, Zugriffsregeln und Tests liegen in [backend/](backend/), die Einrichtung steht in

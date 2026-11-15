@@ -1,0 +1,107 @@
+name: Release
+
+# Baut bei einem Tag der Form v0.1.0-alpha.2 die signierte APK und legt ein GitHub-Release an.
+# Version und Versionscode kommen aus dem Tag und dem Lauf, in den Dateien muss nichts geändert werden.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Signierte APK und Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Version aus dem Tag
+        id: ver
+        run: |
+          name="${GITHUB_REF_NAME#v}"
+          # Der Versionscode muss bei jedem Update steigen. Der Offset liegt über den lokal gebauten Versionen.
+          code=$((100 + GITHUB_RUN_NUMBER))
+          case "$name" in
+            *-alpha*|*-beta*|*-rc*) pre=true ;;
+            *) pre=false ;;
+          esac
+          {
+            echo "name=$name"
+            echo "code=$code"
+            echo "prerelease=$pre"
+          } >> "$GITHUB_OUTPUT"
+          echo "Version $name, Versionscode $code, Vorabversion: $pre"
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v4
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Signaturschlüssel bereitstellen
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          for v in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Das GitHub-Secret $v fehlt (Einstellungen > Secrets and variables > Actions)."
+              exit 1
+            fi
+          done
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/pwdr-release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/pwdr-release.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Unit-Tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Release-APK bauen
+        run: >
+          ./gradlew assembleRelease
+          -Ppwdr.versionName=${{ steps.ver.outputs.name }}
+          -Ppwdr.versionCode=${{ steps.ver.outputs.code }}
+
+      - name: APK prüfen und benennen
+        id: apk
+        run: |
+          out="pwdr-${{ steps.ver.outputs.name }}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$out"
+          bt=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$bt/apksigner" verify --print-certs "$out"
+          "$bt/aapt" dump badging "$out" | grep -E "^package:"
+          if "$bt/aapt" dump badging "$out" | grep -q "application-debuggable"; then
+            echo "::error::Die Release-APK ist debugbar."
+            exit 1
+          fi
+          sha256sum "$out" > "$out.sha256"
+          cat "$out.sha256"
+          echo "file=$out" >> "$GITHUB_OUTPUT"
+
+      - name: GitHub-Release anlegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=""
+          if [ "${{ steps.ver.outputs.prerelease }}" = "true" ]; then flags="--prerelease"; fi
+          gh release create "$GITHUB_REF_NAME" \
+            "${{ steps.apk.outputs.file }}" "${{ steps.apk.outputs.file }}.sha256" \
+            --title "PWDR ${{ steps.ver.outputs.name }}" \
+            --generate-notes \
+            $flags
+
+      # Den Schlüssel nicht auf dem Runner liegen lassen
+      - name: Aufräumen
+        if: always()
+        run: rm -f keystore.properties "$RUNNER_TEMP/pwdr-release.jks"

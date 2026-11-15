@@ -1,0 +1,64 @@
+name: CI
+
+# Baut und testet bei jedem Push auf main und bei jedem Pull Request.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Ein neuer Lauf für denselben Branch bricht den alten ab.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: App (Tests und Debug-Build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Android SDK mit akzeptierten Lizenzen, damit Gradle fehlende Plattformen selbst nachlädt
+      - uses: android-actions/setup-android@v4
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Unit-Tests und Debug-Build
+        run: ./gradlew testDebugUnitTest assembleDebug
+
+      - name: Testberichte
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: testberichte
+          path: app/build/reports/tests/
+          retention-days: 14
+
+      # Die Debug-APK nur für Pushes auf main aufbewahren (zum schnellen Ausprobieren)
+      - name: Debug-APK
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: pwdr-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+  backend:
+    name: Backend (Zugriffsregeln in Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # Startet Postgres mit PostGIS in Docker, bildet Supabase nach und führt die Tests aus
+      - name: Zugriffsregeln testen
+        run: backend/test/run-tests.sh
