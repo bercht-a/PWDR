@@ -65,6 +65,26 @@ fun parseColor(hex: String, fallback: Color = Color(0xFF4CC9F0)): Color =
         fallback
     }
 
+/** Versionsname aus dem Paket, für Rückmeldungen von Testern. */
+@Composable
+private fun VersionLine() {
+    val context = LocalContext.current
+    val version = remember {
+        try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        } catch (e: Exception) {
+            null
+        }
+    }
+    if (version != null) {
+        Text(
+            "PWDR $version",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 /** Tab "Freunde": Anmeldung, Profil, Freunde einladen, Standort teilen (PLAN.md 5c). */
 @Composable
 fun FriendsScreen(modifier: Modifier = Modifier) {
@@ -160,6 +180,7 @@ private fun LoginCard() {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        VersionLine()
     }
 }
 
@@ -412,6 +433,7 @@ private fun FriendsContent() {
             TextButton(onClick = { confirmDelete = true }) {
                 Text("Konto löschen", color = MaterialTheme.colorScheme.error)
             }
+            VersionLine()
         }
     }
 }

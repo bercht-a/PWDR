@@ -1,0 +1,111 @@
+# PWDR
+
+Private Ski-App für die Schweiz (Android). Der Name ist die Kurzform von "Powder".
+
+PWDR zeichnet einen Skitag auf, erkennt Lift, Abfahrt und Pause, wertet jede Abfahrt aus und zeigt sie mit Pistenname, Speed und
+Höhenmetern. Dazu kommen Sprachausgabe im Kopfhörer, Freunde live auf der Karte sowie Wetter, Schnee, Lawinenbulletin und Webcams
+für das Skigebiet. Es ist ein Privatprojekt ohne Skipass-Anbindung. Fahrten bleiben auf dem Handy.
+
+**Stand:** Alpha `0.1.0-alpha.1`. Getestet im Emulator und mit simulierten Strecken, **noch nicht auf einer echten Skifahrt**.
+Die Erkennung von Lift und Abfahrt ist der Teil mit dem größten Risiko und braucht echte Testfahrten.
+
+## Funktionen
+
+| Bereich | Stand |
+|---|---|
+| Aufzeichnen | Vordergrund-Dienst, Erkennung Lift, Abfahrt, Pause, Barometer-Höhe, große Anzeige für Handschuhe, Stopp per langem Druck |
+| Statistik | Tagesliste, Tagesansicht mit Verlaufsgrafik (Höhenmeter, Distanz, Speed), Abfahrtsliste, GPX-Export |
+| Karte | swisstopo-Karte, Pisten und Lifte aus OpenStreetMap, gefahrene Spur nach Speed gefärbt, Freunde als Punkte |
+| Pisten und Lifte | Zuordnung der Abfahrten zu Piste und Lift (Lauchernalp und Adelboden-Lenk) |
+| Sprachausgabe | Speed im Intervall, neuer Höchstwert, Ende der Abfahrt, Kopfhörer-Taste, Ansage bei sich nähernden Freunden |
+| Freunde | Anmeldung per E-Mail-Link, Einladung per Code oder Link, Standort teilen mit Ablaufzeit und pro Freund |
+| Gebiet | Lawinenbulletin (SLF), Wetter (MeteoSchweiz über Open-Meteo), Schneehöhen (SLF IMIS), Webcam-Links |
+
+Noch nicht gebaut: Community-Meldungen ("Hier ist viel los"), G-Kräfte, Wochen- und Monatsstatistik, Lawinenregionen als Kartenfläche,
+weitere Skigebiete. Alle Entscheidungen, Recherchen und die Roadmap stehen in [PLAN.md](PLAN.md).
+
+## Alpha-Version installieren
+
+1. Die Datei `pwdr-0.1.0-alpha.1.apk` aufs Handy bringen (Messenger, Cloud-Speicher oder USB).
+2. Öffnen und die Installation erlauben. Android fragt einmal, ob Apps aus dieser Quelle installiert werden dürfen.
+3. Beim ersten Aufzeichnen **Standort** ("Beim Verwenden der App") und **Benachrichtigungen** erlauben.
+4. Für lange Aufzeichnungen die Akku-Optimierung für PWDR ausschalten. Manche Hersteller (Xiaomi, Samsung, Huawei) beenden sonst
+   Hintergrunddienste.
+5. Beim ersten Start lädt die App einmalig die Pisten und Lifte (ca. eine Minute, danach offline). Dafür braucht es Netz.
+
+Die Version steht unten im Tab "Freunde". Bitte bei Rückmeldungen angeben. Hilfreich ist der GPX-Export (Statistik > Tag > GPX teilen):
+Mit der Datei lassen sich Fehler bei der Erkennung nachvollziehen.
+
+Updates lassen sich über die bestehende Installation einspielen, solange sie mit demselben Schlüssel signiert sind.
+
+## Entwickeln
+
+Voraussetzungen: JDK 17 oder neuer, Android SDK mit Plattform 37 (Gradle lädt sie bei akzeptierter Lizenz selbst), Internet.
+
+```
+./gradlew testDebugUnitTest     # Unit-Tests
+./gradlew assembleDebug         # Debug-APK: app/build/outputs/apk/debug/
+./gradlew assembleRelease       # signierte Alpha-APK: app/build/outputs/apk/release/
+```
+
+Aktuell: Gradle 9.6.0, Android-Gradle-Plugin 9.5.1, Kotlin 2.4, Jetpack Compose, minSdk 29, compileSdk 37, targetSdk 36.
+
+### Signieren
+
+Die Release-APK wird mit einem eigenen Schlüssel signiert. Der Schlüssel liegt **nicht** im Repository. Zum Einrichten:
+
+1. Schlüssel erzeugen: `keytool -genkeypair -keystore <Pfad>/pwdr-alpha.jks -alias pwdr-alpha -keyalg RSA -keysize 4096 -validity 10000`
+2. Im Projektordner eine Datei `keystore.properties` anlegen (ist in `.gitignore`):
+
+   ```
+   storeFile=C:/Pfad/zu/pwdr-alpha.jks
+   storePassword=...
+   keyAlias=pwdr-alpha
+   keyPassword=...
+   ```
+
+Ohne diese Datei baut `assembleRelease` eine unsignierte APK. **Den Schlüssel sichern:** Geht er verloren, lässt sich eine installierte
+Alpha nicht mehr aktualisieren, man müsste sie deinstallieren (die Fahrten gehen dabei verloren).
+
+## Backend (Freunde und Live-Standort)
+
+Supabase (Postgres, Anmeldung, Realtime). Schema, Zugriffsregeln und Tests liegen in [backend/](backend/), die Einrichtung steht in
+[backend/README.md](backend/README.md). Die Zugriffsregeln lassen sich lokal ohne Supabase-Konto testen (Docker nötig):
+
+```
+backend/test/run-tests.sh
+```
+
+Die Adresse des Projekts und der öffentliche Schlüssel stehen in `app/src/main/java/app/pwdr/social/Backend.kt`. Der öffentliche
+Schlüssel ist für Apps gedacht, den Schutz übernehmen die Zugriffsregeln. Der geheime Schlüssel (`service_role`) gehört nie in die App.
+
+## Aufbau
+
+```
+app/src/main/java/app/pwdr/
+  tracking/   Aufzeichnung, Erkennung, Auswertung, Barometer, GPX
+  data/       Datenbank (Room), Repositories
+  osm/        Pisten und Lifte aus OpenStreetMap (Overpass)
+  map/        Karte (MapLibre), Ebenen für Pisten, Lifte, Spur, Freunde
+  voice/      Sprachausgabe, Warteschlange, Annäherung an Freunde
+  social/     Konto, Freunde, Standort teilen (Supabase)
+  resort/     Gebiet: Lawinen, Wetter, Schnee, Webcams
+  ui/         Bildschirme
+backend/      Supabase-Schema und Tests
+PLAN.md       Plan, Entscheidungen, Recherchen
+```
+
+## Datenquellen und Lizenzen
+
+- Karten: swisstopo (Pixelkarte). Pisten und Lifte: © OpenStreetMap-Mitwirkende (ODbL).
+- Lawinenbulletin und Schneemessungen: SLF (CC BY 4.0).
+- Wetter: MeteoSchweiz über Open-Meteo.com (CC BY 4.0, nur nicht-kommerzielle Nutzung).
+- Webcams gehören den Betreibern und werden nur verlinkt.
+
+## Hinweise
+
+- **Lawinen:** Das Bulletin ersetzt keine eigene Beurteilung vor Ort. PWDR ist keine Lawinenwarn-App und gibt keine Empfehlung für Touren.
+  Ohne Bulletin steht in der App "kein Bulletin", nie "keine Gefahr".
+- **Datenschutz:** Fahrten, Punkte und Statistik bleiben auf dem Gerät. Nur wer aktiv teilt, sendet seine aktuelle Position an
+  ausgewählte Freunde. Es gibt keine Standortgeschichte auf dem Server, die Freigabe endet mit der Aufzeichnung oder der Ablaufzeit.
+- **Zulassung:** Privatprojekt, nicht im Play Store.
