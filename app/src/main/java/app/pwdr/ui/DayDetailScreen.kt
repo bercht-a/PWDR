@@ -1,6 +1,7 @@
 package app.pwdr.ui
 
 import android.content.Context
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import app.pwdr.R
 import app.pwdr.data.PwdrDatabase
 import app.pwdr.data.RunEntity
+import app.pwdr.data.TrackingRepository
+import app.pwdr.tracking.TrackingStore
 import app.pwdr.tracking.Activity
 import app.pwdr.tracking.ActivityRange
 import app.pwdr.tracking.DayProfile
@@ -89,6 +93,7 @@ fun DayDetailScreen(
     var metric by remember { mutableStateOf(loadMetric(context)) }
     var profile by remember { mutableStateOf<List<ProfilePoint>?>(null) }
     val scope = rememberCoroutineScope()
+    var confirmDelete by remember { mutableStateOf(false) }
 
     LaunchedEffect(runs) {
         profile = withContext(Dispatchers.IO) {
@@ -101,6 +106,32 @@ fun DayDetailScreen(
             val ranges = runs.map { ActivityRange(Activity.valueOf(it.type), it.startMs, it.endMs) }
             DayProfile.build(sessions, ranges)
         }
+    }
+
+    if (confirmDelete) {
+        val downs = runs.count { it.type == Activity.DOWNHILL.name && it.vertDownM >= MIN_RUN_VERT_DOWN_M }
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Tag löschen?") },
+            text = {
+                Text(
+                    "${date.format(DAY_FORMAT)}: ${if (downs == 1) "1 Abfahrt" else "$downs Abfahrten"} mit allen Aufzeichnungen und Messpunkten werden endgültig " +
+                        "gelöscht. Das lässt sich nicht rückgängig machen. Exportiere vorher die GPX-Datei, wenn du sie behalten willst.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            TrackingRepository(PwdrDatabase.get(context)).deleteSessions(runs.map { it.sessionId }.distinct())
+                        }
+                        onBack()
+                    }
+                }) { Text("Löschen", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Abbrechen") } },
+        )
     }
 
     val downhills = runs.filter { it.type == Activity.DOWNHILL.name && it.vertDownM >= MIN_RUN_VERT_DOWN_M }
@@ -125,6 +156,13 @@ fun DayDetailScreen(
                 TextButton(onClick = onBack) { Text(stringResource(R.string.back)) }
                 TextButton(onClick = { onShowTrack(null) }) { Text(stringResource(R.string.track_day)) }
                 Spacer(Modifier.weight(1f))
+                TextButton(onClick = {
+                    if (TrackingStore.recording.value) {
+                        Toast.makeText(context, "Während der Aufzeichnung kann nichts gelöscht werden.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        confirmDelete = true
+                    }
+                }) { Text("Löschen", color = MaterialTheme.colorScheme.error) }
                 TextButton(onClick = { scope.launch { shareGpx(context, runs.map { it.sessionId }.distinct(), date) } }) {
                     Text(stringResource(R.string.stats_export_gpx))
                 }

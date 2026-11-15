@@ -99,6 +99,9 @@ interface SessionDao {
 
     @Query("SELECT * FROM SessionEntity WHERE finished = 0")
     suspend fun unfinished(): List<SessionEntity>
+
+    @Query("DELETE FROM SessionEntity WHERE id IN (:ids)")
+    suspend fun deleteAll(ids: List<Long>)
 }
 
 @Dao
@@ -108,6 +111,9 @@ interface PointDao {
 
     @Query("SELECT * FROM TrackPointEntity WHERE sessionId = :sessionId ORDER BY timeMs")
     suspend fun forSession(sessionId: Long): List<TrackPointEntity>
+
+    @Query("DELETE FROM TrackPointEntity WHERE sessionId IN (:ids)")
+    suspend fun deleteForSessions(ids: List<Long>)
 }
 
 @Dao
@@ -172,6 +178,9 @@ interface RunDao {
 
     @Query("DELETE FROM RunEntity WHERE sessionId = :sessionId")
     suspend fun deleteForSession(sessionId: Long)
+
+    @Query("DELETE FROM RunEntity WHERE sessionId IN (:ids)")
+    suspend fun deleteForSessions(ids: List<Long>)
 
     @Query("SELECT * FROM RunEntity ORDER BY startMs DESC")
     fun observeAll(): Flow<List<RunEntity>>

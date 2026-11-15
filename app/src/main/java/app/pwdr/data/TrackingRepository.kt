@@ -1,5 +1,6 @@
 package app.pwdr.data
 
+import androidx.room.withTransaction
 import app.pwdr.osm.WayKind
 import app.pwdr.tracking.Activity
 import app.pwdr.tracking.GpxExporter
@@ -81,6 +82,19 @@ class TrackingRepository(private val db: PwdrDatabase) {
             }
         }.filter { it.isNotEmpty() }
         return GpxExporter.toGpx(name, tracks)
+    }
+
+    /**
+     * Löscht Aufzeichnungen endgültig: Abschnitte, Rohpunkte und die Aufzeichnung selbst, in einem Schritt.
+     * Ein Tag besteht aus den Aufzeichnungen seiner Abschnitte.
+     */
+    suspend fun deleteSessions(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        db.withTransaction {
+            db.runs().deleteForSessions(ids)
+            db.points().deleteForSessions(ids)
+            db.sessions().deleteAll(ids)
+        }
     }
 
     /** Beendet Aufzeichnungen, die nicht sauber gestoppt wurden (App oder Handy abgestürzt). */
