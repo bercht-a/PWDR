@@ -409,6 +409,8 @@ object Social {
                 "Zu viele E-Mails angefordert. Bitte kurz warten."
             "Unable to resolve host" in text || "timeout" in text.lowercase() || "Failed to connect" in text ->
                 "Keine Verbindung. Bitte Netz prüfen."
+            // Alpha: den technischen Grund kurz mit anzeigen, damit Tester ihn melden können.
+            text.isNotBlank() -> "$fallback\n(${text.lineSequence().first().take(140)})"
             else -> fallback
         }
     }
