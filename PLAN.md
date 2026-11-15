@@ -234,6 +234,8 @@ Wichtig: Eine Backend-Funktion, die die Daten holt und für alle Nutzer zwischen
 - Die Farben werden in der Umsetzung vor dem Bau auf Kontrast geprüft (mind. 4.5:1 für Text).
 
 ### Logo und App-Icon (Entwurf v1)
+**Umgesetzt (15.11.2026), v2 als Vektor:** Adaptives Icon mit getrenntem Vordergrund und Hintergrund (`ic_launcher_foreground.xml`, `ic_launcher_background.xml`) und einfarbiger Variante für Themed Icons (`ic_launcher_monochrome.xml`). Ein einziges Motiv: Berg mit zwei Schneekappen, eine geschwungene Spur im Pulverschnee und etwas Schneestaub, auf einem Nachthimmel von Blau nach Schwarzblau. Das Motiv liegt in der inneren Sicherheitszone. Statt des Skifahrers in der Welle (v1) gibt es also kein Meereswellen-Motiv mehr. Das Benachrichtigungs-Icon ist dieselbe Silhouette, einfarbig weiß, mit ausgesparter Spur. Alles Vektor, keine Pixelbilder. Der Schriftzug PWDR als eigene Grafik ist noch nicht gebaut, in der App steht der Name als Text. Die Entwurfsnotizen darunter bleiben als Begründung stehen.
+
 Der Entwurf passt farblich gut zur Palette (Dunkelblau, Eisblau/Cyan). Für die Umsetzung fällt auf:
 - **Name (entschieden):** Der Logo-Schriftzug lautet **PWDR**. Der Entwurf sagt noch "Freeride Powder App", das wird ersetzt. Ein kleiner Zusatz "Powder" ist nicht nötig.
 - **Welle:** Die Schneewelle sieht stark nach Meereswelle (Surf) aus. Für Schnee eher weichere, gestäubte Kanten und Schneestaub statt Wasserspritzer.
