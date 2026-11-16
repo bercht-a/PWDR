@@ -1,0 +1,1 @@
+{ "version": 8, "sources": { "src-color": { "type": "raster", "tiles": ["https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/{z}/{x}/{y}.jpeg"], "tileSize": 256, "minzoom": 5, "maxzoom": 18, "attribution": "© swisstopo" } }, "layers": [ { "id": "dl-base", "type": "raster", "source": "src-color" } ] }

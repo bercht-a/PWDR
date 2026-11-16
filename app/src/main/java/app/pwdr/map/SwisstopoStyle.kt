@@ -48,6 +48,28 @@ object SwisstopoStyle {
         """.trimIndent()
     }
 
+    /**
+     * Stil nur mit den Quellen, die für den Offline-Download gebraucht werden (gewählte Grundkarte, optional Hangneigung).
+     * Der Download lädt jede Quelle des Stils, deshalb stehen die nicht gewählten Karten hier nicht drin. Die Kachel-Adressen
+     * sind dieselben wie im Anzeige-Stil, so findet die Karte die geladenen Kacheln später im Zwischenspeicher.
+     */
+    fun downloadJson(base: BaseMap, slope: Boolean): String {
+        fun src(id: String, path: String, ext: String) =
+            "\"$id\": { \"type\": \"raster\", \"tiles\": [\"$WMTS/$path/default/current/3857/{z}/{x}/{y}.$ext\"], " +
+                "\"tileSize\": 256, \"minzoom\": 5, \"maxzoom\": 18, \"attribution\": \"$ATTRIBUTION\" }"
+        val (baseId, baseSrc) = when (base) {
+            BaseMap.COLOR -> "src-color" to src("src-color", "ch.swisstopo.pixelkarte-farbe", "jpeg")
+            BaseMap.GREY -> "src-grey" to src("src-grey", "ch.swisstopo.pixelkarte-grau", "jpeg")
+            BaseMap.AERIAL -> "src-aerial" to src("src-aerial", "ch.swisstopo.swissimage", "jpeg")
+        }
+        val sources = listOfNotNull(baseSrc, if (slope) src("src-slope", "ch.swisstopo-karto.hangneigung", "png") else null).joinToString(", ")
+        val layers = listOfNotNull(
+            "{ \"id\": \"dl-base\", \"type\": \"raster\", \"source\": \"$baseId\" }",
+            if (slope) "{ \"id\": \"dl-slope\", \"type\": \"raster\", \"source\": \"src-slope\" }" else null,
+        ).joinToString(", ")
+        return "{ \"version\": 8, \"sources\": { $sources }, \"layers\": [ $layers ] }"
+    }
+
     /** Stil mit der Standardkarte (für Ansichten ohne Auswahl). */
     val json: String get() = json()
 }

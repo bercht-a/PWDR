@@ -103,6 +103,7 @@ fun MapScreen() {
     var avalanche by remember { mutableStateOf(mapPrefs.avalanche) }
     var avalancheRegion by remember { mutableStateOf<AvalancheRegion?>(null) }
     var showLayers by remember { mutableStateOf(false) }
+    var showOffline by remember { mutableStateOf(false) }
 
     // Community-Meldungen (PLAN.md 5c, Phase 7)
     val authState by Social.authState.collectAsState()
@@ -209,7 +210,10 @@ fun MapScreen() {
         ) {
             MapChip("Gebiet") { showResort = true }
             MapChip("Ansicht") { showLayers = true }
+            MapChip("Offline") { showOffline = true }
         }
+
+        if (showOffline) OfflineMapDialog(mapRef, base, slope) { showOffline = false }
 
         avalancheRegion?.let { AvalancheDialog(it) { avalancheRegion = null } }
 
