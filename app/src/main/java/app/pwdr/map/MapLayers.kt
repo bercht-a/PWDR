@@ -32,8 +32,10 @@ internal fun applyBaseMap(style: Style, base: BaseMap, slope: Boolean) {
 internal fun MapLayersDialog(
     base: BaseMap,
     slope: Boolean,
+    avalanche: Boolean,
     onBase: (BaseMap) -> Unit,
     onSlope: (Boolean) -> Unit,
+    onAvalanche: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -57,6 +59,17 @@ internal fun MapLayersDialog(
                         )
                     }
                     Switch(checked = slope, onCheckedChange = onSlope)
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Lawinenregionen (SLF)")
+                        Text(
+                            "Gefahrenstufe je Region nach dem SLF-Bulletin, Tipp auf eine Region zeigt Details. Braucht Netz, nur eine Übersicht.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = avalanche, onCheckedChange = onAvalanche)
                 }
             }
         },

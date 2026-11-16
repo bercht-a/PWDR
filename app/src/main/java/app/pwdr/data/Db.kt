@@ -216,6 +216,9 @@ interface RunDao {
     @Query("DELETE FROM RunEntity WHERE sessionId IN (:ids)")
     suspend fun deleteForSessions(ids: List<Long>)
 
+    @Query("DELETE FROM RunEntity WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
     @Query("SELECT * FROM RunEntity ORDER BY startMs DESC")
     fun observeAll(): Flow<List<RunEntity>>
 

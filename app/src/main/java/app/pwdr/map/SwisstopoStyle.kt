@@ -81,4 +81,18 @@ class MapPrefs(context: Context) {
             } catch (_: Exception) {
             }
         }
+
+    /** Lawinenregionen des SLF als Fläche. Standardmässig aus, damit nichts geladen wird, was niemand sehen will. */
+    var avalanche: Boolean
+        get() = try {
+            prefs.getBoolean("map_avalanche", false)
+        } catch (e: Exception) {
+            false
+        }
+        set(value) {
+            try {
+                prefs.edit().putBoolean("map_avalanche", value).apply()
+            } catch (_: Exception) {
+            }
+        }
 }

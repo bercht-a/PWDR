@@ -2,6 +2,10 @@ package app.pwdr.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -211,7 +216,17 @@ private fun PeriodCard(runs: List<RunEntity>, zone: ZoneId) {
         )
     }
     val today = remember { LocalDate.now(zone) }
-    val sum = remember(runs, period) { PeriodStats.summarize(runs, period, today, zone) }
+    var offset by remember { mutableStateOf(0) }
+    var metric by remember {
+        mutableStateOf(
+            try {
+                Metric.valueOf(context.getSharedPreferences("pwdr_prefs", Context.MODE_PRIVATE).getString("stats_bar_metric", null) ?: Metric.VERT.name)
+            } catch (e: Exception) {
+                Metric.VERT
+            },
+        )
+    }
+    val sum = remember(runs, period, offset) { PeriodStats.summarize(runs, period, today, zone, offset) }
     Column(
         Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -229,6 +244,7 @@ private fun PeriodCard(runs: List<RunEntity>, zone: ZoneId) {
                         .background(if (on) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(9.dp))
                         .clickable {
                             period = p
+                            offset = 0
                             try {
                                 context.getSharedPreferences("pwdr_prefs", Context.MODE_PRIVATE).edit().putString("stats_period", p.name).apply()
                             } catch (_: Exception) {
@@ -241,6 +257,41 @@ private fun PeriodCard(runs: List<RunEntity>, zone: ZoneId) {
                 )
             }
         }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { offset-- }) { Text("‹") }
+            Text(
+                period.title(today, offset),
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            TextButton(onClick = { offset++ }, enabled = offset < 0) { Text("›") }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Metric.entries.forEach { m ->
+                val on = m == metric
+                Text(
+                    m.label,
+                    Modifier
+                        .weight(1f)
+                        .background(if (on) m.color else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+                        .clickable {
+                            metric = m
+                            try {
+                                context.getSharedPreferences("pwdr_prefs", Context.MODE_PRIVATE).edit().putString("stats_bar_metric", m.name).apply()
+                            } catch (_: Exception) {
+                            }
+                        }
+                        .padding(vertical = 6.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (on) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    maxLines = 1,
+                )
+            }
+        }
+        PeriodBars(PeriodStats.bars(runs, period, today, zone, offset), metric, perMonth = period == Period.SEASON)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Summary("Tage", sum.days.toString())
             Summary(stringResource(R.string.label_runs), sum.runs.toString())
@@ -260,6 +311,68 @@ private fun PeriodCard(runs: List<RunEntity>, zone: ZoneId) {
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/** Balken je Tag (Woche, Monat) oder je Monat (Saison) für die gewählte Metrik. Ohne Werte erscheint ein Hinweis. */
+@Composable
+private fun PeriodBars(bars: List<PeriodStats.Bar>, metric: Metric, perMonth: Boolean) {
+    fun value(b: PeriodStats.Bar): Double = when (metric) {
+        Metric.VERT -> b.vertDownM
+        Metric.DIST -> b.distanceM
+        Metric.SPEED -> b.maxSpeedMs
+        Metric.G -> b.maxG ?: 0.0
+    }
+    fun text(v: Double): String = when (metric) {
+        Metric.VERT -> formatMeters(v)
+        Metric.DIST -> formatDistance(v)
+        Metric.SPEED -> "${kmh(v)} km/h"
+        Metric.G -> "${formatG(v)} g"
+    }
+    val max = bars.maxOfOrNull { value(it) } ?: 0.0
+    if (max <= 0.0) {
+        Text(
+            if (metric == Metric.G) "Keine G-Werte in diesem Zeitraum." else "Keine Abfahrten in diesem Zeitraum.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+    val color = metric.color
+    val dense = bars.size > 12
+    val unit = if (perMonth) "je Monat" else "je Tag"
+    val caption = when (metric) {
+        Metric.VERT -> "Höhenmeter bergab $unit"
+        Metric.DIST -> "Distanz bergab $unit"
+        Metric.SPEED -> "Höchstgeschwindigkeit $unit"
+        Metric.G -> "Höchster G-Wert $unit (Richtwert)"
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("$caption · Spitze ${text(max)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.fillMaxWidth().height(96.dp), horizontalArrangement = Arrangement.spacedBy(if (dense) 2.dp else 6.dp), verticalAlignment = Alignment.Bottom) {
+            bars.forEach { b ->
+                val v = value(b)
+                Box(
+                    Modifier.weight(1f).fillMaxHeight(if (v > 0) (v / max).toFloat().coerceAtLeast(0.04f) else 0.02f)
+                        .background(if (v > 0) color else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)),
+                )
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (dense) 2.dp else 6.dp)) {
+            bars.forEachIndexed { i, b ->
+                // Bei vielen Balken nur jede fünfte Beschriftung, sonst wird es eng.
+                val show = !dense || i % 5 == 0 || i == bars.lastIndex
+                Text(
+                    if (show) b.label else "",
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
         }
     }
 }

@@ -111,6 +111,14 @@ class TrackingRepository(private val db: PwdrDatabase) {
         }
     }
 
+    /**
+     * Entfernt eine einzelne Fahrt aus Tag, Statistik und Karte (zum Beispiel einen Fehlalarm). Die Messpunkte der
+     * Aufzeichnung bleiben bestehen und sind weiter im GPX-Export enthalten.
+     */
+    suspend fun deleteRun(runId: Long) {
+        db.runs().deleteById(runId)
+    }
+
     /** Beendet Aufzeichnungen, die nicht sauber gestoppt wurden (App oder Handy abgestürzt). */
     suspend fun recoverUnfinished() {
         for (s in db.sessions().unfinished()) {

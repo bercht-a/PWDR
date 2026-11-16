@@ -100,6 +100,8 @@ fun MapScreen() {
     val mapPrefs = remember { MapPrefs(context) }
     var base by remember { mutableStateOf(mapPrefs.base) }
     var slope by remember { mutableStateOf(mapPrefs.slope) }
+    var avalanche by remember { mutableStateOf(mapPrefs.avalanche) }
+    var avalancheRegion by remember { mutableStateOf<AvalancheRegion?>(null) }
     var showLayers by remember { mutableStateOf(false) }
 
     // Community-Meldungen (PLAN.md 5c, Phase 7)
@@ -133,6 +135,8 @@ fun MapScreen() {
             locationEnabled = permissionGranted,
             base = base,
             slope = slope,
+            avalanche = avalanche,
+            onAvalancheTap = { avalancheRegion = it },
             onMapReady = { mapRef = it },
             onReportTap = { selectedId = it },
         )
@@ -207,12 +211,16 @@ fun MapScreen() {
             MapChip("Ansicht") { showLayers = true }
         }
 
+        avalancheRegion?.let { AvalancheDialog(it) { avalancheRegion = null } }
+
         if (showLayers) {
             MapLayersDialog(
                 base = base,
                 slope = slope,
+                avalanche = avalanche,
                 onBase = { base = it; mapPrefs.base = it },
                 onSlope = { slope = it; mapPrefs.slope = it },
+                onAvalanche = { avalanche = it; mapPrefs.avalanche = it },
                 onDismiss = { showLayers = false },
             )
         }
@@ -502,7 +510,15 @@ private fun reportCenter(map: MapLibreMap?): LatLng? {
 
 @SuppressLint("MissingPermission")
 @Composable
-private fun PwdrMap(locationEnabled: Boolean, base: BaseMap, slope: Boolean, onMapReady: (MapLibreMap) -> Unit, onReportTap: (String) -> Unit) {
+private fun PwdrMap(
+    locationEnabled: Boolean,
+    base: BaseMap,
+    slope: Boolean,
+    avalanche: Boolean,
+    onMapReady: (MapLibreMap) -> Unit,
+    onReportTap: (String) -> Unit,
+    onAvalancheTap: (AvalancheRegion) -> Unit,
+) {
     val context = LocalContext.current
     val mapView = rememberMapViewWithLifecycle()
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
@@ -526,8 +542,15 @@ private fun PwdrMap(locationEnabled: Boolean, base: BaseMap, slope: Boolean, onM
                     }
                     m.addOnMapClickListener { latLng ->
                         val id = reportIdAt(m, latLng)
-                        if (id != null) onReportTap(id)
-                        id != null
+                        if (id != null) {
+                            onReportTap(id)
+                            true
+                        } else {
+                            // Meldungen haben Vorrang, danach die Lawinenregion (nur wenn die Ebene an ist).
+                            val region = avalancheAt(m, latLng)
+                            if (region != null) onAvalancheTap(region)
+                            region != null
+                        }
                     }
                     map = m
                     onMapReady(m)
@@ -540,6 +563,7 @@ private fun PwdrMap(locationEnabled: Boolean, base: BaseMap, slope: Boolean, onM
     ReportsLayerEffect(style)
     FriendsLayerEffect(style)
     LaunchedEffect(style, base, slope) { style?.let { applyBaseMap(it, base, slope) } }
+    LaunchedEffect(style, avalanche) { style?.let { applyAvalanche(it, avalanche) } }
 
     // Standort-Punkt aktivieren, sobald Berechtigung und Stil vorhanden sind.
     DisposableEffect(map, style, locationEnabled) {

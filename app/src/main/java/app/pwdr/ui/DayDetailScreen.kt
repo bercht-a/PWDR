@@ -4,7 +4,9 @@ import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -97,6 +99,7 @@ fun DayDetailScreen(
     var confirmDelete by remember { mutableStateOf(false) }
     var sessionInfo by remember { mutableStateOf<List<app.pwdr.data.SessionEntity>>(emptyList()) }
     var showGSettings by remember { mutableStateOf(false) }
+    var runToDelete by remember { mutableStateOf<RunEntity?>(null) }
 
     LaunchedEffect(runs) {
         sessionInfo = withContext(Dispatchers.IO) {
@@ -118,6 +121,26 @@ fun DayDetailScreen(
             val ranges = runs.map { ActivityRange(Activity.valueOf(it.type), it.startMs, it.endMs) }
             DayProfile.build(sessions, ranges)
         }
+    }
+
+    runToDelete?.let { r ->
+        AlertDialog(
+            onDismissRequest = { runToDelete = null },
+            title = { Text("Abfahrt löschen?") },
+            text = {
+                Text(
+                    "${r.name ?: stringResource(R.string.unknown_piste)} um ${Instant.ofEpochMilli(r.startMs).atZone(zone).format(TIME_FORMAT)} " +
+                        "wird aus Tag und Statistik entfernt. Die Messpunkte bleiben im GPX-Export. Das lässt sich nicht rückgängig machen.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    runToDelete = null
+                    scope.launch { withContext(Dispatchers.IO) { TrackingRepository(PwdrDatabase.get(context)).deleteRun(r.id) } }
+                }) { Text("Löschen", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { runToDelete = null }) { Text("Abbrechen") } },
+        )
     }
 
     if (confirmDelete) {
@@ -236,7 +259,7 @@ fun DayDetailScreen(
         }
         item {
             Text(
-                text = stringResource(R.string.stats_runs_title),
+                text = stringResource(R.string.stats_runs_title) + " (lange drücken zum Löschen)",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -246,7 +269,13 @@ fun DayDetailScreen(
             val no = if (isDownhill) ++runNo else 0
             item(key = run.id) {
                 if (isDownhill) {
-                    DownhillRow(no, run, metric, maxByMetric, zone) { onShowTrack(run.id) }
+                    DownhillRow(no, run, metric, maxByMetric, zone, onLongClick = {
+                        if (TrackingStore.recording.value) {
+                            Toast.makeText(context, "Während der Aufzeichnung kann nichts gelöscht werden.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            runToDelete = run
+                        }
+                    }) { onShowTrack(run.id) }
                 } else {
                     LiftRow(run, zone) { onShowTrack(run.id) }
                 }
@@ -351,8 +380,9 @@ private fun LegendItem(color: androidx.compose.ui.graphics.Color, text: String) 
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun DownhillRow(no: Int, r: RunEntity, metric: Metric, max: Double, zone: ZoneId, onClick: () -> Unit) {
+private fun DownhillRow(no: Int, r: RunEntity, metric: Metric, max: Double, zone: ZoneId, onLongClick: () -> Unit, onClick: () -> Unit) {
     val time = Instant.ofEpochMilli(r.startMs).atZone(zone).format(TIME_FORMAT)
     val value = when (metric) {
         Metric.VERT -> r.vertDownM
@@ -368,7 +398,7 @@ private fun DownhillRow(no: Int, r: RunEntity, metric: Metric, max: Double, zone
     }
     Column(
         Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick).padding(12.dp),
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

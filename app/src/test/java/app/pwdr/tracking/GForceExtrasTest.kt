@@ -141,4 +141,64 @@ class GForceExtrasTest {
         assertEquals(0, sum.runs)
         assertEquals(0.0, sum.vmaxMs, 0.0)
     }
+
+    // ---------------------------------------------------------------- Balken
+    @Test fun weekBarsCoverMondayToToday() {
+        val today = LocalDate.parse("2026-11-18")
+        val bars = PeriodStats.bars(listOf(run("2026-11-16", vert = 400.0), run("2026-11-18", vert = 250.0), run("2026-11-18", vert = 100.0)), Period.WEEK, today, zone)
+        assertEquals(listOf("Mo", "Di", "Mi"), bars.map { it.label })
+        assertEquals(400.0, bars[0].vertDownM, 1e-9)
+        assertEquals(0.0, bars[1].vertDownM, 1e-9)
+        assertEquals(350.0, bars[2].vertDownM, 1e-9)
+        assertEquals(2, bars[2].runs)
+    }
+
+    @Test fun monthBarsHaveOneBarPerDay() {
+        val bars = PeriodStats.bars(emptyList(), Period.MONTH, LocalDate.parse("2026-11-18"), zone)
+        assertEquals(18, bars.size)
+        assertEquals("1", bars.first().label)
+    }
+
+    @Test fun seasonBarsAreMonthsFromOctober() {
+        val today = LocalDate.parse("2027-01-10")
+        val bars = PeriodStats.bars(listOf(run("2026-10-05", vert = 100.0), run("2026-12-24", vert = 200.0), run("2026-09-30", vert = 999.0)), Period.SEASON, today, zone)
+        assertEquals(listOf("Okt", "Nov", "Dez", "Jan"), bars.map { it.label })
+        assertEquals(listOf(100.0, 0.0, 200.0, 0.0), bars.map { it.vertDownM })
+    }
+
+    @Test fun barsIgnoreLiftsAndFutureRuns() {
+        val today = LocalDate.parse("2026-11-18")
+        val bars = PeriodStats.bars(listOf(run("2026-11-18", type = "LIFT"), run("2026-11-19")), Period.WEEK, today, zone)
+        assertTrue(bars.all { it.vertDownM == 0.0 })
+    }
+
+    @Test fun previousPeriodsAreFullAndSeparate() {
+        val today = LocalDate.parse("2026-11-18")
+        val runs = listOf(run("2026-11-12", vert = 300.0), run("2026-11-17", vert = 100.0))
+        val last = PeriodStats.bars(runs, Period.WEEK, today, zone, -1)
+        assertEquals(7, last.size)
+        assertEquals(300.0, last[3].vertDownM, 1e-9) // Donnerstag 12.11.
+        assertEquals(1, PeriodStats.summarize(runs, Period.WEEK, today, zone, -1).runs)
+        assertEquals(1, PeriodStats.summarize(runs, Period.WEEK, today, zone, 0).runs)
+        assertEquals(31, PeriodStats.bars(emptyList(), Period.MONTH, today, zone, -1).size) // Oktober
+    }
+
+    @Test fun rangeAndTitles() {
+        val today = LocalDate.parse("2026-11-18")
+        assertEquals(LocalDate.parse("2026-11-09") to LocalDate.parse("2026-11-15"), Period.WEEK.range(today, -1))
+        assertEquals(LocalDate.parse("2026-10-01") to LocalDate.parse("2026-10-31"), Period.MONTH.range(today, -1))
+        assertEquals(LocalDate.parse("2025-10-01") to LocalDate.parse("2026-09-30"), Period.SEASON.range(today, -1))
+        assertEquals("9.–15. Nov 2026", Period.WEEK.title(today, -1))
+        assertEquals("Oktober 2026", Period.MONTH.title(today, -1))
+        assertEquals("Saison 2025/26", Period.SEASON.title(today, -1))
+        assertEquals("Saison 2026/27", Period.SEASON.title(today, 0))
+    }
+
+    @Test fun barsCarryOtherMetrics() {
+        val today = LocalDate.parse("2026-11-18")
+        val bars = PeriodStats.bars(listOf(run("2026-11-18", dist = 1500.0, vmax = 20.0, maxG = 2.0), run("2026-11-18", dist = 500.0, vmax = 25.0, maxG = 1.5)), Period.WEEK, today, zone)
+        assertEquals(2000.0, bars.last().distanceM, 1e-9)
+        assertEquals(25.0, bars.last().maxSpeedMs, 1e-9)
+        assertEquals(2.0, bars.last().maxG!!, 1e-9)
+    }
 }
