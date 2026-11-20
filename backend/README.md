@@ -31,6 +31,12 @@ Backend für Freunde und Live-Standort, siehe PLAN.md Abschnitt 5c. Die privaten
 
 Der anon-Schlüssel ist für die App gedacht und darf im APK stehen. Den Schutz übernehmen die Zugriffsregeln.
 
+**E-Mail-Vorlagen (optional):** In `backend/supabase/email/` liegen zwei Vorlagen im PWDR-Stil (dunkel, Wortmarke, grosser Knopf):
+`magic_link.html` (Anmelden) und `confirm_signup.html` (erste Anmeldung, weil "Confirm email" an ist). Einfügen unter
+*Authentication > Emails* beim jeweiligen Eintrag, Betreff steht im Kommentar am Dateianfang. Der Platzhalter
+`{{ .ConfirmationURL }}` muss bleiben, sonst führt der Link nicht in die App zurück. Der Absender bleibt "Supabase Auth",
+bis unter *Authentication > SMTP Settings* ein eigener Mail-Dienst eingetragen ist.
+
 Hinweis zum E-Mail-Versand: Der eingebaute Versand von Supabase ist stark begrenzt (wenige Mails pro Stunde),
 für einen kleinen Freundeskreis reicht das zum Testen. Für den Alltag später einen eigenen SMTP-Dienst eintragen.
 
