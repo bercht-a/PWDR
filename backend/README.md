@@ -37,6 +37,36 @@ Der anon-Schlüssel ist für die App gedacht und darf im APK stehen. Den Schutz 
 `{{ .ConfirmationURL }}` muss bleiben, sonst führt der Link nicht in die App zurück. Der Absender bleibt "Supabase Auth",
 bis unter *Authentication > SMTP Settings* ein eigener Mail-Dienst eingetragen ist.
 
+### Eigener Mail-Versand ohne eigene Domain (Gmail, SMTP)
+
+Nötig, sobald andere als du selbst Anmelde-Mails bekommen sollen: Der eingebaute Versand von Supabase ist knapp begrenzt
+und liefert nach bisherigem Wissen nur an Adressen aus dem Supabase-Team. Mit einem Gmail-Konto geht es ohne eigene Domain.
+Der Absender ist dann die Gmail-Adresse (der Anzeigename kann "PWDR" sein). Am besten ein eigenes Konto nur dafür anlegen,
+zum Beispiel `pwdr.app.xyz@gmail.com`, nicht das private Hauptkonto.
+
+1. **Zwei-Faktor-Anmeldung** im Google-Konto einschalten (*Google-Konto > Sicherheit > Bestätigung in zwei Schritten*).
+   Ohne sie gibt es keine App-Passwörter.
+2. **App-Passwort erzeugen:** Im Google-Konto nach "App-Passwörter" suchen (oder `myaccount.google.com/apppasswords`),
+   einen Namen vergeben, zum Beispiel "PWDR Supabase", und das 16-stellige Passwort kopieren. Es wird nur einmal angezeigt.
+   Es gehört nicht ins Repository und nicht in die App. Das normale Google-Passwort funktioniert hier nicht.
+3. **In Supabase eintragen:** *Authentication > Emails > SMTP Settings*, "Enable custom SMTP" einschalten:
+
+   | Feld | Wert |
+   |---|---|
+   | Sender email | die Gmail-Adresse |
+   | Sender name | `PWDR` |
+   | Host | `smtp.gmail.com` |
+   | Port | `465` |
+   | Username | die Gmail-Adresse |
+   | Password | das App-Passwort aus Schritt 2 (ohne Leerzeichen) |
+
+   Speichern. Ab dann laufen alle Auth-Mails (Anmelden, Bestätigen) über Gmail.
+4. **Testen:** In der App mit einer fremden Adresse anmelden. Beim ersten Mal den Spam-Ordner prüfen. Kommt nichts an,
+   in Supabase unter *Logs > Auth* nach SMTP-Fehlern suchen (falsches Passwort, 2FA nicht aktiv).
+5. **Grenzen:** Gmail erlaubt etwa 500 Mails pro Tag, Supabase begrenzt Auth-Mails zusätzlich (*Authentication > Rate Limits*,
+   Standard ist für wenige Nutzer genug). Für einen Freundeskreis reicht das. Wird PWDR grösser, lohnt sich eine eigene
+   Domain mit einem Mail-Dienst wie Resend.
+
 Hinweis zum E-Mail-Versand: Der eingebaute Versand von Supabase ist stark begrenzt (wenige Mails pro Stunde),
 für einen kleinen Freundeskreis reicht das zum Testen. Für den Alltag später einen eigenen SMTP-Dienst eintragen.
 
