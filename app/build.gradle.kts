@@ -16,8 +16,8 @@ android {
         minSdk = 29
         targetSdk = 36
         // Standardwerte für lokale Builds. Der Release-Workflow überschreibt sie aus dem Git-Tag (-Ppwdr.versionName, -Ppwdr.versionCode).
-        versionCode = (project.findProperty("pwdr.versionCode") as String?)?.toIntOrNull() ?: 9
-        versionName = (project.findProperty("pwdr.versionName") as String?) ?: "0.1.0-alpha.9"
+        versionCode = (project.findProperty("pwdr.versionCode") as String?)?.toIntOrNull() ?: 10
+        versionName = (project.findProperty("pwdr.versionName") as String?) ?: "0.1.0-alpha.10"
     }
 
     // Schlüssel für Alpha-Versionen: liegt ausserhalb des Repositorys, Angaben in keystore.properties (nicht eingecheckt).
@@ -85,6 +85,7 @@ dependencies {
     implementation(libs.supabase.auth)
     implementation(libs.supabase.postgrest)
     implementation(libs.supabase.realtime)
+    implementation(libs.hcaptcha)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.kotlinx.serialization.json)
 

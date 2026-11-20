@@ -2,7 +2,7 @@ package app.pwdr
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
@@ -17,7 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.maplibre.android.MapLibre
 
-class MainActivity : ComponentActivity() {
+// FragmentActivity (statt ComponentActivity), weil die Captcha-Aufgabe von hCaptcha als Dialog-Fragment erscheint.
+class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

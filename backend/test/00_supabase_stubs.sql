@@ -13,7 +13,26 @@ create role authenticated nologin;
 create role service_role nologin bypassrls;
 
 create schema auth;
-create table auth.users (id uuid primary key default gen_random_uuid(), email text);
+create table auth.users (
+    id uuid primary key default gen_random_uuid(),
+    email text,
+    created_at timestamptz not null default now(),
+    email_confirmed_at timestamptz default now()
+);
+
+-- Wie in Supabase gibt es die Rolle, über die PostgREST sich verbindet (0007 trägt dort die Sperre vor jeder Anfrage ein).
+create role authenticator noinherit login;
+
+-- Nur für die Tests: Neue Konten gelten sofort als freigegeben, damit die älteren Tests (Freunde, Meldungen, Gruppen) nicht
+-- jedes Konto einzeln freigeben müssen. In Supabase gibt es das nicht. Die Freigabe-Tests (13) entfernen die Zeilen wieder.
+create function auth.stub_auto_approve() returns trigger language plpgsql as $$
+begin
+    if to_regclass('public.approvals') is not null then
+        execute 'insert into public.approvals (user_id) values ($1) on conflict do nothing' using new.id;
+    end if;
+    return new;
+end $$;
+create trigger stub_auto_approve after insert on auth.users for each row execute function auth.stub_auto_approve();
 
 -- Wie bei Supabase: die Nutzer-ID kommt aus dem JWT (hier per set_config gesetzt).
 create function auth.uid() returns uuid language sql stable as $$

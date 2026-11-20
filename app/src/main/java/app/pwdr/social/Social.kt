@@ -67,6 +67,16 @@ object Social {
     private val _friends = MutableStateFlow<List<Friend>>(emptyList())
     val friends: StateFlow<List<Friend>> = _friends.asStateFlow()
 
+    private val _approval = MutableStateFlow(ApprovalState())
+
+    /** Freigabe dieses Kontos durch den Admin (0007). Solange sie fehlt, sperrt der Server alle Freunde- und Gruppenfunktionen. */
+    val approval: StateFlow<ApprovalState> = _approval.asStateFlow()
+
+    private val _pendingAccounts = MutableStateFlow<List<PendingAccount>>(emptyList())
+
+    /** Nur für Admins: Konten, die auf Freigabe warten. */
+    val pendingAccounts: StateFlow<List<PendingAccount>> = _pendingAccounts.asStateFlow()
+
     private val _share = MutableStateFlow(ShareState())
     val share: StateFlow<ShareState> = _share.asStateFlow()
 
@@ -194,13 +204,20 @@ object Social {
 
     // ---------------------------------------------------------------- Konto
 
-    fun sendMagicLink(email: String) = run("Link konnte nicht gesendet werden") {
+    /** [captchaToken] stammt von hCaptcha (null, solange kein Schlüssel eingetragen ist). */
+    fun sendMagicLink(email: String, captchaToken: String? = null) = run("Link konnte nicht gesendet werden") {
         val mail = email.trim()
         client.auth.signInWith(OTP, redirectUrl = "${SupabaseConfig.AUTH_SCHEME}://${SupabaseConfig.AUTH_HOST}") {
             this.email = mail
             createUser = true
+            if (captchaToken != null) this.captchaToken = captchaToken
         }
         _linkSentTo.value = mail
+    }
+
+    /** Meldung für die Anmeldeseite (zum Beispiel wenn das Captcha scheitert), ohne Netzzugriff. */
+    fun showMessage(text: String) {
+        _message.value = text
     }
 
     fun resetLinkSent() {
@@ -341,6 +358,10 @@ object Social {
             _diag.value = _diag.value.copy(startNote = "nicht angemeldet")
             return
         }
+        if (!_approval.value.approved) {
+            _diag.value = _diag.value.copy(startNote = "Konto nicht freigegeben")
+            return
+        }
         try {
             refreshFriends()
             loadGroups()
@@ -466,10 +487,66 @@ object Social {
 
     private suspend fun refreshAll() {
         refreshProfile()
+        // Ohne Freigabe sperrt der Server alles Weitere. Dann gar nicht erst fragen.
+        if (!refreshApproval()) return
         refreshFriends()
         refreshGroups()
         refreshShare()
         refreshViewers()
+    }
+
+    /** Fragt den Stand der Freigabe ab. True, wenn das Konto Freunde, Gruppen und Meldungen nutzen darf. */
+    private suspend fun refreshApproval(): Boolean {
+        try {
+            val rows = client.postgrest.rpc("my_status").decodeList<MyStatus>()
+            _approval.value = ApprovalLogic.fromRows(rows)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Gesperrt, Backend ohne 0007 oder Netzfehler (dann bleibt der letzte Stand).
+            ApprovalLogic.fromError(e.message.orEmpty())?.let { _approval.value = it }
+        }
+        val a = _approval.value
+        if (!a.approved) clearSocialLists()
+        if (a.approved && a.isAdmin && a.pendingCount > 0) loadPendingAccounts()
+        if (!a.isAdmin) _pendingAccounts.value = emptyList()
+        return a.approved
+    }
+
+    private fun clearSocialLists() {
+        _friends.value = emptyList()
+        _groups.value = emptyList()
+        _groupMembers.value = emptyMap()
+        _invitations.value = emptyList()
+        _viewers.value = emptyList()
+        _people.value = emptyList()
+        _share.value = ShareState()
+        _live.value = emptyMap()
+        _reports.value = emptyList()
+    }
+
+    private suspend fun loadPendingAccounts() {
+        try {
+            _pendingAccounts.value = client.postgrest.rpc("admin_list_pending").decodeList<PendingAccount>()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Wartende Konten laden: $e")
+        }
+    }
+
+    /** Admin: Konto freigeben. */
+    fun approveAccount(userId: String) = run("Freigabe fehlgeschlagen") {
+        client.postgrest.rpc("admin_approve", buildJsonObject { put("p_user", userId) })
+        _pendingAccounts.value = _pendingAccounts.value.filterNot { it.userId == userId }
+        refreshApproval()
+    }
+
+    /** Admin: Konto ablehnen und löschen. */
+    fun rejectAccount(userId: String) = run("Ablehnen fehlgeschlagen") {
+        client.postgrest.rpc("admin_reject", buildJsonObject { put("p_user", userId) })
+        _pendingAccounts.value = _pendingAccounts.value.filterNot { it.userId == userId }
+        refreshApproval()
     }
 
     private suspend fun refreshProfile() {
@@ -515,6 +592,8 @@ object Social {
     }
 
     private fun clearLocalState() {
+        _approval.value = ApprovalState()
+        _pendingAccounts.value = emptyList()
         _profile.value = null
         _profileLoaded.value = false
         _friends.value = emptyList()
@@ -598,6 +677,13 @@ object Social {
         groupsJob = scope.launch {
             while (isActive) {
                 delay(GROUPS_POLL_MS)
+                val wasApproved = _approval.value.approved
+                if (!refreshApproval()) continue
+                // Gerade freigegeben: alles nachladen, was bisher gesperrt war.
+                if (!wasApproved) {
+                    refreshAll()
+                    continue
+                }
                 refreshGroups()
                 if (_share.value.active) refreshViewers()
             }
@@ -651,6 +737,7 @@ object Social {
 
     /** Wie [loadGroups] und startet das Teilen, falls gerade aufgezeichnet wird und eine Gruppe neu dazukam. */
     private suspend fun refreshGroups() {
+        if (!_approval.value.approved) return
         loadGroups()
         if (_share.value.active || !_autoShare.value || !TrackingStore.recording.value) return
         if (VisiblePeople.sharesWithAnyGroup(_groups.value, System.currentTimeMillis())) startAutoShare()
@@ -796,7 +883,7 @@ object Social {
 
     /** Lädt die Meldungen im Umkreis. Ohne Anmeldung oder Netz bleibt die letzte Liste stehen. */
     suspend fun loadReports(lat: Double, lon: Double) {
-        if (_authState.value != AuthState.SIGNED_IN) return
+        if (_authState.value != AuthState.SIGNED_IN || !_approval.value.approved) return
         try {
             _reports.value = client.postgrest.rpc(
                 "list_reports",
@@ -869,6 +956,9 @@ object Social {
     private fun describe(e: Exception, fallback: String): String {
         val text = e.message.orEmpty()
         return when {
+            AuthTexts.isSignupClosed(text) -> AuthTexts.SIGNUP_CLOSED
+            AuthTexts.isCaptchaFailed(text) -> AuthTexts.CAPTCHA_FAILED
+            ApprovalLogic.isNotApproved(text) -> "Dein Konto ist noch nicht freigegeben."
             "too_many_attempts" in text -> "Zu viele Fehlversuche. Bitte in einer Stunde noch einmal versuchen."
             "too_many_invites" in text -> "Zu viele offene Einladungen. Bitte erst einlösen oder ablaufen lassen."
             "no_active_share" in text -> "Es läuft keine Freigabe."

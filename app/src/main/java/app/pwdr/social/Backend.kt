@@ -19,6 +19,12 @@ object SupabaseConfig {
     /** Adresse, über die der Link aus der Anmelde-E-Mail in die App zurückführt (muss in Supabase eingetragen sein). */
     const val AUTH_SCHEME = "pwdr"
     const val AUTH_HOST = "auth"
+
+    /**
+     * Öffentlicher Website-Schlüssel (sitekey) von hCaptcha für den Anmelde-Link. Leer = kein Captcha in der App.
+     * Erst eintragen, wenn das Captcha auch in Supabase eingeschaltet ist (backend/README.md), sonst passt beides nicht zusammen.
+     */
+    const val HCAPTCHA_SITE_KEY = ""
 }
 
 object Backend {

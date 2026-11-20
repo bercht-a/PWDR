@@ -11,6 +11,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Nur für das hCaptcha-SDK (Anmelde-Captcha), nichts anderes wird von dort geladen.
+        maven {
+            url = uri("https://jitpack.io")
+            content { includeGroup("com.github.hCaptcha.hcaptcha-android-sdk") }
+        }
     }
 }
 

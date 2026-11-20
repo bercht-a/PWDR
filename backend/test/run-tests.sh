@@ -30,6 +30,9 @@ run ../supabase/migrations/0004_reports.sql
 run ../supabase/migrations/0005_report_apres.sql
 run ../supabase/migrations/0005_report_apres.sql
 run ../supabase/migrations/0006_groups.sql
+run seed_pre_0007.sql
+run ../supabase/migrations/0007_approval.sql
 run 10_rls_tests.sql
 run 11_reports_tests.sql
 run 12_groups_tests.sql
+run 13_approval_tests.sql

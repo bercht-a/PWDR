@@ -12,6 +12,7 @@ ksp = "2.3.14"
 coroutines = "1.11.0"
 playServicesLocation = "21.4.0"
 supabase = "3.9.0"
+hcaptcha = "5.2.0"
 ktor = "3.6.0"
 browser = "1.10.0"
 serialization = "1.11.0"
@@ -34,6 +35,7 @@ kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutine
 kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 maplibre-android = { module = "org.maplibre.gl:android-sdk", version.ref = "maplibre" }
+hcaptcha = { module = "com.github.hCaptcha.hcaptcha-android-sdk:sdk", version.ref = "hcaptcha" }
 supabase-bom = { module = "io.github.jan-tennert.supabase:bom", version.ref = "supabase" }
 supabase-auth = { module = "io.github.jan-tennert.supabase:auth-kt" }
 supabase-postgrest = { module = "io.github.jan-tennert.supabase:postgrest-kt" }

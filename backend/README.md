@@ -17,6 +17,8 @@ Backend für Freunde und Live-Standort, siehe PLAN.md Abschnitt 5c. Die privaten
    - `0005_report_apres.sql`: Meldungstyp Après-Ski. **Wer 0004 schon eingespielt hat, führt nur 0005 aus** (wiederholbar).
    - `0006_groups.sql`: Gruppen (Tabellen, Funktionen, erweiterte Sichtbarkeit des Live-Standorts). Die App nutzt sie noch nicht,
      die Migration lässt sich aber schon einspielen. Sie ändert `can_view_location`, `delete_account` und `cleanup_expired`.
+   - `0007_approval.sql`: Freigabe neuer Konten durch einen Admin (Tabellen `approvals` und `admins`, Sperre vor jeder Anfrage,
+     Admin-Funktionen). **Nur einmal ausführen** und danach die Schritte unter "Freigabe neuer Konten und Captcha" erledigen.
 
    Danach unter *Database > Extensions* prüfen, dass `postgis`, `pgcrypto` und `pg_cron` aktiv sind
    (`pg_cron` ggf. einschalten und die letzte Anweisung von 0001 mit `cron.schedule(...)` einzeln ausführen).
@@ -67,6 +69,59 @@ zum Beispiel `pwdr.app.xyz@gmail.com`, nicht das private Hauptkonto.
    Standard ist für wenige Nutzer genug). Für einen Freundeskreis reicht das. Wird PWDR grösser, lohnt sich eine eigene
    Domain mit einem Mail-Dienst wie Resend.
 
+### Freigabe neuer Konten und Captcha (empfohlen, Migration 0007)
+
+Die Registrierung bleibt offen, aber ein neues Konto darf erst nach deiner Freigabe in der App etwas tun. Der Server sperrt alles
+ausser eigenem Profil, Statusabfrage und Konto löschen. Ein Captcha beim Anmelde-Link hält Bots ab.
+
+1. `0007_approval.sql` im SQL Editor ausführen (nach 0006). Alle Konten, die es schon gibt, gelten als freigegeben.
+   **Nur einmal ausführen**, sonst würden wartende Konten mit freigegeben.
+2. **Dich zum Admin machen** (E-Mail-Adresse deines Kontos einsetzen, nicht ins Repository schreiben):
+   `insert into public.admins (user_id) select id from auth.users where email = 'deine@adresse';`
+3. *Authentication > Sign In / Providers*: **"Allow new users to sign up" einschalten** (die Freigabe ersetzt das Sperren).
+4. *Database > Extensions*: **`pg_graphql` ausschalten.** PWDR nutzt es nicht, und GraphQL umgeht die Sperre vor jeder Anfrage
+   (die Migration entzieht den Rollen dort zusätzlich den Zugang, falls das Schema vorhanden ist).
+5. **Prüfen, dass die Sperre greift:** Mit einer zweiten Adresse ein neues Konto anlegen. Die App muss "Dein Konto wartet auf
+   Freigabe" zeigen. Du siehst als Admin im Freunde-Tab "1 Konto wartet auf Freigabe" und kannst es freigeben oder ablehnen.
+   Zeigt das neue Konto stattdessen die normale Freunde-Seite, ist die Sperre nicht aktiv: Im SQL Editor
+   `select setconfig from pg_db_role_setting where setrole = 'authenticator'::regrole;` muss `pgrst.db_pre_request=public.pwdr_gate`
+   enthalten, sonst `alter role authenticator set pgrst.db_pre_request = 'public.pwdr_gate'; notify pgrst, 'reload config';`.
+6. **Notausstieg** (falls die Sperre alle aussperrt):
+   `alter role authenticator reset pgrst.db_pre_request; notify pgrst, 'reload config';`
+
+Wer wartet: Nur Konten, die ihre E-Mail-Adresse per Link bestätigt haben, erscheinen in deiner Liste (mit Name und Adresse).
+"Ablehnen" löscht das Konto. Die Person kann sich neu anmelden. Freigaben passieren nur in der App, die Prüfung liegt im Server.
+
+**Captcha (hCaptcha)**, damit niemand Anmelde-Mails massenhaft auslöst:
+
+1. Konto auf hcaptcha.com anlegen und unter *Sites* einen Website-Schlüssel (sitekey) erzeugen. Den geheimen Schlüssel (secret) brauchst du
+   in Supabase. Welcher Host dort für eine App ohne Website einzutragen ist, steht in der hCaptcha-Dokumentation nicht klar,
+   im Zweifel einen frei gewählten Namen eintragen.
+2. Den sitekey in `SupabaseConfig.HCAPTCHA_SITE_KEY` (`app/src/main/java/app/pwdr/social/Backend.kt`) eintragen, App bauen und
+   an alle verteilen (neuer Tag). Der sitekey ist öffentlich und darf im Code stehen.
+3. **Erst danach** in Supabase unter *Authentication > Attack Protection* (je nach Version *Bot and Abuse Protection*) "Enable CAPTCHA
+   protection" einschalten, hCaptcha wählen und den secret eintragen. Alte App-Versionen ohne Captcha können sich dann nicht mehr
+   per Link anmelden, bereits angemeldete Konten bleiben angemeldet.
+4. Zum Ausprobieren gibt es Testschlüssel von hCaptcha (sitekey `10000000-ffff-ffff-ffff-000000000001`, secret
+   `0x0000000000000000000000000000000000000000`). Sie schützen nicht vor Bots und gehören nicht in den Alltag.
+
+Ob Supabase das Captcha auch beim Anmelde-Link (OTP) verlangt, steht in der Dokumentation nicht ausdrücklich. Nach dem Einschalten
+einen Link anfordern: Mit Captcha muss er ankommen, ein Aufruf ohne Token muss abgelehnt werden.
+
+### Alternative: Registrierung sperren und Leute einladen
+
+Der Supabase-Schlüssel steht im App-Code, also kann jeder, der die Adresse kennt, über die API ein Konto anlegen.
+Wer keine Freigabe in der App will, schaltet die freie Registrierung ab und lässt nur Eingeladene zu:
+
+1. *Authentication > Sign In / Providers* (je nach Version *Providers > Email*): **"Allow new users to sign up"** ausschalten.
+2. Neue Leute unter *Authentication > Users > Invite user* einladen. Sie bekommen eine Mail mit der Vorlage "Invite user"
+   (`backend/supabase/email/invite_user.html`, unter *Authentication > Emails > Invite user* einfügen). Nach dem Tippen auf
+   den Link ist das Konto aktiv, danach melden sie sich wie gewohnt per Magic Link an.
+3. Wer sich ohne Einladung anmeldet, sieht in der App: "Neue Anmeldungen sind gesperrt. Frag den Entwickler nach einer
+   Einladung." Bereits vorhandene Konten (wie deines) sind nicht betroffen.
+
+Eine Einladung braucht den eigenen SMTP-Dienst (siehe oben), sonst gilt für sie das enge Limit des eingebauten Versands.
+
 Hinweis zum E-Mail-Versand: Der eingebaute Versand von Supabase ist stark begrenzt (wenige Mails pro Stunde),
 für einen kleinen Freundeskreis reicht das zum Testen. Für den Alltag später einen eigenen SMTP-Dienst eintragen.
 
@@ -92,6 +147,9 @@ Die Tests prüfen vor allem, was **nicht** sichtbar sein darf: Fremde, Blockiert
 | `test/11_reports_tests.sql` | Tests der Community-Meldungen |
 | `test/12_groups_tests.sql` | Tests der Gruppen (Sichtbarkeit, Einladungen, Grenzen, Eigentümerwechsel) |
 | `supabase/migrations/0006_groups.sql` | Gruppen: Tabellen, Funktionen, Sichtbarkeit über gemeinsame Gruppen |
+| `supabase/migrations/0007_approval.sql` | Freigabe neuer Konten: Sperre vor jeder Anfrage, Admin-Funktionen |
+| `test/13_approval_tests.sql` | Tests der Freigabe (Sperre, Admin, Standort nur für Freigegebene) |
+| `supabase/email/` | E-Mail-Vorlagen (Magic link, Confirm signup, Invite user) |
 | `supabase/migrations/0004_reports.sql` | Meldungen: Tabellen, Funktionen, Aufräumen |
 | `test/run-tests.sh` | Startet Docker-Postgres und führt alles aus |
 

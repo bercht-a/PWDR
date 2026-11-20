@@ -37,6 +37,8 @@ private enum class Tab(val label: Int, val icon: Int) {
 fun AppRoot() {
     var selected by rememberSaveable { mutableIntStateOf(Tab.RECORD.ordinal) }
     val invitations by Social.invitations.collectAsState()
+    val approval by Social.approval.collectAsState()
+    val friendsBadge = app.pwdr.social.ApprovalLogic.badge(approval.pendingCount, invitations.size)
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -50,8 +52,8 @@ fun AppRoot() {
                         selected = selected == tab.ordinal,
                         onClick = { selected = tab.ordinal },
                         icon = {
-                            if (tab == Tab.FRIENDS && invitations.isNotEmpty()) {
-                                BadgedBox(badge = { Badge { Text(invitations.size.toString()) } }) {
+                            if (tab == Tab.FRIENDS && friendsBadge > 0) {
+                                BadgedBox(badge = { Badge { Text(friendsBadge.toString()) } }) {
                                     Icon(painterResource(tab.icon), contentDescription = null)
                                 }
                             } else {

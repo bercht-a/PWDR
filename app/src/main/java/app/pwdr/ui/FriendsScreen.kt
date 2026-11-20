@@ -54,6 +54,7 @@ import app.pwdr.social.parseInstantMs
 import app.pwdr.tracking.TrackingStore
 import app.pwdr.voice.VoiceSettingsStore
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val COLORS = listOf("#4CC9F0", "#2EC4B6", "#FFD23F", "#FF5A5F", "#B388FF", "#FF9F43")
 
@@ -92,6 +93,7 @@ fun FriendsScreen(modifier: Modifier = Modifier) {
     val profile by Social.profile.collectAsState()
     val profileLoaded by Social.profileLoaded.collectAsState()
     val message by Social.message.collectAsState()
+    val approval by Social.approval.collectAsState()
 
     Column(
         modifier
@@ -117,7 +119,11 @@ fun FriendsScreen(modifier: Modifier = Modifier) {
             auth == AuthState.SIGNED_OUT -> LoginCard()
             !profileLoaded -> Centered { CircularProgressIndicator() }
             profile == null -> ProfileSetup()
-            else -> FriendsAndGroups()
+            !approval.approved -> PendingApprovalCard()
+            else -> Column(Modifier.fillMaxSize()) {
+                AdminAccountsRow()
+                Box(Modifier.weight(1f)) { FriendsAndGroups() }
+            }
         }
     }
 }
@@ -145,6 +151,9 @@ private fun LoginCard() {
     val sentTo by Social.linkSentTo.collectAsState()
     val busy by Social.busy.collectAsState()
     var email by remember { mutableStateOf("") }
+    var checking by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Freunde", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground)
@@ -162,7 +171,26 @@ private fun LoginCard() {
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Email),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Button(onClick = { Social.sendMagicLink(email) }, enabled = !busy && "@" in email) {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            checking = true
+                            try {
+                                // Mit Captcha: erst die Aufgabe lösen, dann den Link anfordern. Ohne Schlüssel gibt es kein Token.
+                                val activity = app.pwdr.captcha.Captcha.activityOf(context)
+                                val token = if (activity != null) app.pwdr.captcha.Captcha.token(activity) else null
+                                Social.sendMagicLink(email, token)
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                Social.showMessage(app.pwdr.social.AuthTexts.CAPTCHA_FAILED)
+                            } finally {
+                                checking = false
+                            }
+                        }
+                    },
+                    enabled = !busy && !checking && "@" in email,
+                ) {
                     Text("Link senden")
                 }
             } else {
