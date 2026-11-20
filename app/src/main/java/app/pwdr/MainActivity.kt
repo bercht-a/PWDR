@@ -31,6 +31,10 @@ class MainActivity : ComponentActivity() {
         Social.start(applicationContext)
         Social.handleDeepLink(intent)
 
+        // Einmal am Tag nach einer neueren Version auf GitHub schauen (ohne Netz still).
+        app.pwdr.update.UpdateChecker.init(applicationContext)
+        lifecycleScope.launch { app.pwdr.update.UpdateChecker.checkIfDue() }
+
         // Aufzeichnungen, die nicht sauber beendet wurden (Absturz), nachträglich auswerten.
         // Nicht ausführen, solange gerade aufgezeichnet wird.
         lifecycleScope.launch(Dispatchers.IO) {

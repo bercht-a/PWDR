@@ -82,6 +82,7 @@ private fun VersionLine() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+    app.pwdr.update.UpdateSettings()
 }
 
 /** Tab "Freunde": Anmeldung, Profil, Freunde einladen, Standort teilen (PLAN.md 5c). */

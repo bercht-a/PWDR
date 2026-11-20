@@ -100,6 +100,9 @@ fun RecordScreen(modifier: Modifier = Modifier) {
             }
         }
 
+        // Hinweis auf eine neue Version, nie während der Aufzeichnung.
+        if (!recording) app.pwdr.update.UpdateCard(Modifier.padding(top = 8.dp))
+
         Column(
             modifier = Modifier
                 .weight(1f)
