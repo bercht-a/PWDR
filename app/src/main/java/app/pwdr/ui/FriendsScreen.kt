@@ -116,7 +116,7 @@ fun FriendsScreen(modifier: Modifier = Modifier) {
             auth == AuthState.SIGNED_OUT -> LoginCard()
             !profileLoaded -> Centered { CircularProgressIndicator() }
             profile == null -> ProfileSetup()
-            else -> FriendsContent()
+            else -> FriendsAndGroups()
         }
     }
 }
@@ -234,16 +234,17 @@ private fun ProfileSetup() {
 // ------------------------------------------------------------------ Inhalt
 
 @Composable
-private fun FriendsContent() {
+internal fun FriendsContent() {
     val context = LocalContext.current
     val profile by Social.profile.collectAsState()
     val friends by Social.friends.collectAsState()
     val share by Social.share.collectAsState()
+    val viewers by Social.viewers.collectAsState()
+    val groups by Social.groups.collectAsState()
     val live by Social.live.collectAsState()
     val inviteCode by Social.inviteCode.collectAsState()
     val autoShare by Social.autoShare.collectAsState()
     val excluded by Social.excluded.collectAsState()
-    val pendingJoin by Social.pendingJoinCode.collectAsState()
     val recording by TrackingStore.recording.collectAsState()
     val busy by Social.busy.collectAsState()
     var code by remember { mutableStateOf("") }
@@ -271,20 +272,6 @@ private fun FriendsContent() {
     val accepted = friends.filter { it.status == "accepted" }
     val blocked = friends.filter { it.status == "blocked" }
 
-    if (pendingJoin != null) {
-        AlertDialog(
-            onDismissRequest = { Social.pendingJoinCode.value = null },
-            title = { Text("Einladung einlösen?") },
-            text = { Text("Mit dem Code $pendingJoin Freundschaft schliessen.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    Social.redeemInvite(pendingJoin.orEmpty())
-                    Social.pendingJoinCode.value = null
-                }) { Text("Einlösen") }
-            },
-            dismissButton = { TextButton(onClick = { Social.pendingJoinCode.value = null }) { Text("Abbrechen") } },
-        )
-    }
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
@@ -324,20 +311,24 @@ private fun FriendsContent() {
                 Text("Standort teilen", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "Beim Aufzeichnen automatisch mit Freunden teilen",
+                        "Beim Aufzeichnen automatisch teilen (Freunde und Gruppen)",
                         Modifier.weight(1f),
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Switch(checked = autoShare, onCheckedChange = Social::setAutoShare)
                 }
                 if (share.active) {
-                    val n = share.friendIds.size
+                    // Ohne Gruppen im Backend (0006) gibt es keine Liste, dann zählen die freigegebenen Freunde.
+                    val n = if (viewers.isNotEmpty()) viewers.size else share.friendIds.size
                     Text(
                         "Du teilst deinen Standort mit $n ${if (n == 1) "Person" else "Personen"}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary,
                     )
+                    app.pwdr.social.GroupTexts.viewerLines(viewers).forEach {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     Text(
                         if (recording) "Deine Position wird gesendet, bis du die Aufzeichnung stoppst."
                         else "Gesendet wird, sobald die Aufzeichnung läuft.",
@@ -350,12 +341,12 @@ private fun FriendsContent() {
                             "ihre, solange sie aufzeichnen. Mit dem Stopp endet das Teilen. Einzelne Freunde kannst du unten ausnehmen.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (accepted.isEmpty()) {
-                        Text("Lade zuerst einen Freund ein.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (accepted.isEmpty() && groups.isEmpty()) {
+                        Text("Lade zuerst einen Freund ein oder erstelle eine Gruppe.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
                     Text(
-                        "Automatisches Teilen ist aus. Deine Freunde sehen dich nicht.",
+                        "Automatisches Teilen ist aus. Weder Freunde noch Gruppen sehen dich.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -448,7 +439,7 @@ private fun FriendsContent() {
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                     )
-                    Button(onClick = { Social.redeemInvite(code); code = "" }, enabled = !busy && code.length == 6) {
+                    Button(onClick = { Social.handleCode(code); code = "" }, enabled = !busy && code.length == 6) {
                         Text("Einlösen")
                     }
                 }

@@ -3,6 +3,8 @@ package app.pwdr.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -11,6 +13,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -20,6 +23,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import app.pwdr.R
 import app.pwdr.map.MapScreen
+import app.pwdr.social.Social
 
 private enum class Tab(val label: Int, val icon: Int) {
     MAP(R.string.tab_map, R.drawable.ic_tab_map),
@@ -32,6 +36,7 @@ private enum class Tab(val label: Int, val icon: Int) {
 @Composable
 fun AppRoot() {
     var selected by rememberSaveable { mutableIntStateOf(Tab.RECORD.ordinal) }
+    val invitations by Social.invitations.collectAsState()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -44,7 +49,15 @@ fun AppRoot() {
                     NavigationBarItem(
                         selected = selected == tab.ordinal,
                         onClick = { selected = tab.ordinal },
-                        icon = { Icon(painterResource(tab.icon), contentDescription = null) },
+                        icon = {
+                            if (tab == Tab.FRIENDS && invitations.isNotEmpty()) {
+                                BadgedBox(badge = { Badge { Text(invitations.size.toString()) } }) {
+                                    Icon(painterResource(tab.icon), contentDescription = null)
+                                }
+                            } else {
+                                Icon(painterResource(tab.icon), contentDescription = null)
+                            }
+                        },
                         label = { Text(stringResource(tab.label)) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.onPrimary,

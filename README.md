@@ -6,7 +6,7 @@ PWDR zeichnet einen Skitag auf, erkennt Lift, Abfahrt und Pause, wertet jede Abf
 Höhenmetern. Dazu kommen Sprachausgabe im Kopfhörer, Freunde live auf der Karte sowie Wetter, Schnee, Lawinenbulletin und Webcams
 für das Skigebiet. Es ist ein Privatprojekt ohne Skipass-Anbindung. Fahrten bleiben auf dem Handy.
 
-**Stand:** Alpha `0.1.0-alpha.7`. Getestet im Emulator und mit simulierten Strecken, **noch nicht auf einer echten Skifahrt**.
+**Stand:** Alpha `0.1.0-alpha.8`. Getestet im Emulator und mit simulierten Strecken, **noch nicht auf einer echten Skifahrt**.
 Die Erkennung von Lift und Abfahrt ist der Teil mit dem größten Risiko und braucht echte Testfahrten.
 
 ## Funktionen
@@ -18,7 +18,7 @@ Die Erkennung von Lift und Abfahrt ist der Teil mit dem größten Risiko und bra
 | Karte | swisstopo-Karte (umschaltbar auf Luftbild und grau, dazu Hangneigung ab 30° und die Lawinenregionen des SLF mit Gefahrenstufe), Offline-Karte (aktuellen Ausschnitt in der gewählten Ansicht laden, Pisten sind ohnehin lokal), Pisten und Lifte aus OpenStreetMap, gefahrene Spur nach Speed gefärbt, Freunde als Punkte |
 | Pisten und Lifte | Zuordnung der Abfahrten zu Piste und Lift (Lauchernalp und Adelboden-Lenk) |
 | Sprachausgabe | Speed im Intervall, neuer Höchstwert, Ende der Abfahrt, Kopfhörer-Taste, Ansage bei sich nähernden Freunden |
-| Freunde | Anmeldung per E-Mail-Link, Einladung per Code oder Link. Die Verbindung gilt für beide, jeder kann sie jederzeit entfernen. Beim Aufzeichnen wird der Standort automatisch mit Freunden geteilt (abschaltbar, pro Freund einstellbar) und sie erscheinen auf der Karte |
+| Freunde und Gruppen | Anmeldung per E-Mail-Link, Einladung per Code oder Link. **Gruppen:** benannte Gruppen mit Laufzeit, in denen sich alle Mitglieder auf der Karte sehen, solange sie aufzeichnen. Einladen per Code oder Link, oder bestehende Freunde direkt (sie müssen annehmen). Vor dem Beitritt steht ein Hinweis zur Sichtbarkeit. Braucht die Backend-Datei `0006_groups.sql`. Freunde: Die Verbindung gilt für beide, jeder kann sie jederzeit entfernen. Beim Aufzeichnen wird der Standort automatisch mit Freunden geteilt (abschaltbar, pro Freund einstellbar) und sie erscheinen auf der Karte |
 | Meldungen | Knopf "Melden" auf der Karte: Andrang, Pistenzustand, Neuschnee, Warnung, Après-Ski (Kaffee-Symbol) mit Ablaufzeit. Andere bestätigen oder widersprechen, ohne Namen |
 | Gebiet | Lawinenbulletin (SLF), Wetter (MeteoSchweiz über Open-Meteo), Schneehöhen (SLF IMIS), Webcam-Links |
 
@@ -27,7 +27,7 @@ weitere Skigebiete. Alle Entscheidungen, Recherchen und die Roadmap stehen in [P
 
 ## Alpha-Version installieren
 
-1. Die Datei `pwdr-0.1.0-alpha.7.apk` aufs Handy bringen (Messenger, Cloud-Speicher oder USB).
+1. Die Datei `pwdr-0.1.0-alpha.8.apk` aufs Handy bringen (Messenger, Cloud-Speicher oder USB).
 2. Öffnen und die Installation erlauben. Android fragt einmal, ob Apps aus dieser Quelle installiert werden dürfen.
 3. Beim ersten Aufzeichnen **Standort** ("Beim Verwenden der App") und **Benachrichtigungen** erlauben.
 4. Für lange Aufzeichnungen die Akku-Optimierung für PWDR ausschalten. Manche Hersteller (Xiaomi, Samsung, Huawei) beenden sonst

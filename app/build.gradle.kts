@@ -16,8 +16,8 @@ android {
         minSdk = 29
         targetSdk = 36
         // Standardwerte für lokale Builds. Der Release-Workflow überschreibt sie aus dem Git-Tag (-Ppwdr.versionName, -Ppwdr.versionCode).
-        versionCode = (project.findProperty("pwdr.versionCode") as String?)?.toIntOrNull() ?: 7
-        versionName = (project.findProperty("pwdr.versionName") as String?) ?: "0.1.0-alpha.7"
+        versionCode = (project.findProperty("pwdr.versionCode") as String?)?.toIntOrNull() ?: 8
+        versionName = (project.findProperty("pwdr.versionName") as String?) ?: "0.1.0-alpha.8"
     }
 
     // Schlüssel für Alpha-Versionen: liegt ausserhalb des Repositorys, Angaben in keystore.properties (nicht eingecheckt).

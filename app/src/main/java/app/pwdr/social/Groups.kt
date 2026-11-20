@@ -143,3 +143,79 @@ object VisiblePeople {
     fun backendMissing(errorText: String): Boolean =
         "PGRST202" in errorText || "Could not find the function" in errorText || "schema cache" in errorText
 }
+
+/** Texte und Auswahlmöglichkeiten für die Gruppen-Oberfläche, ohne Android, damit sie sich testen lassen. */
+object GroupTexts {
+    const val MAX_NAME = 30
+    const val MAX_MEMBERS = 20
+
+    data class DurationOption(val label: String, val days: Int?)
+
+    /** Tage bis zum nächsten 30. April (Saisonende), mindestens 1 und höchstens 366. */
+    fun daysToSeasonEnd(today: java.time.LocalDate): Int {
+        var end = java.time.LocalDate.of(today.year, 4, 30)
+        if (end.isBefore(today)) end = end.plusYears(1)
+        return java.time.temporal.ChronoUnit.DAYS.between(today, end).toInt().coerceIn(1, 366)
+    }
+
+    /** Laufzeiten beim Erstellen und Verlängern. Der Vorschlag (7 Tage) steht an dritter Stelle. */
+    fun durationOptions(today: java.time.LocalDate): List<DurationOption> = listOf(
+        DurationOption("1 Tag", 1),
+        DurationOption("3 Tage", 3),
+        DurationOption("7 Tage (empfohlen)", 7),
+        DurationOption("Bis Saisonende (30. April)", daysToSeasonEnd(today)),
+        DurationOption("Unbegrenzt", null),
+    )
+
+    const val DEFAULT_DURATION_INDEX = 2
+
+    fun memberCount(n: Int): String = if (n == 1) "1 Mitglied" else "$n Mitglieder"
+
+    /** "unbegrenzt", "noch 3 Tage (bis 27.11.)", "noch 5 Std." oder "abgelaufen". */
+    fun expiry(group: GroupRow, nowMs: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String {
+        val end = group.expiresAtMs ?: return "unbegrenzt"
+        val left = end - nowMs
+        if (left <= 0) return "abgelaufen"
+        val date = java.time.Instant.ofEpochMilli(end).atZone(zone).format(java.time.format.DateTimeFormatter.ofPattern("d.M."))
+        val hours = left / 3_600_000L
+        val days = left / 86_400_000L
+        return when {
+            left < 3_600_000L -> "läuft in weniger als 1 Std. ab"
+            days < 1 -> "noch $hours Std. (bis $date)"
+            else -> "noch $days ${if (days == 1L) "Tag" else "Tage"} (bis $date)"
+        }
+    }
+
+    /** Neues Mitglied: in den letzten 24 Stunden beigetreten. */
+    fun isNew(joinedAt: String?, nowMs: Long): Boolean {
+        val t = joinedAt?.let { runCatching { parseInstantMs(it) }.getOrNull() } ?: return false
+        return nowMs - t in 0..86_400_000L
+    }
+
+    /** Statuszeile eines Mitglieds in der Mitgliederliste. */
+    fun memberStatus(m: GroupMemberRow, isMe: Boolean): String = when {
+        isMe && !m.shareLocation -> "Du, teilst in dieser Gruppe nicht"
+        isMe -> "Du"
+        m.visible -> "auf der Karte"
+        !m.shareLocation -> "teilt in dieser Gruppe nicht"
+        else -> "zeichnet gerade nicht auf"
+    }
+
+    /** Wer mich gerade sieht, eine Zeile je Person: "Hugo (Freund, Wochenende Arosa)". */
+    fun viewerLines(viewers: List<ViewerRow>): List<String> = viewers.sortedBy { it.displayName.lowercase() }.map { v ->
+        val via = buildList {
+            if (v.viaFriend) add("Freund")
+            addAll(v.groupNames)
+        }
+        if (via.isEmpty()) v.displayName else "${v.displayName} (${via.joinToString(", ")})"
+    }
+
+    fun inviteShareText(code: String, groupName: String, maxUses: Int): String =
+        "Komm in meine PWDR-Gruppe \"$groupName\"! Code: $code (24 Stunden gültig, höchstens $maxUses Beitritte) oder Link: pwdr://group/$code"
+
+    /** Der Satz, der vor jedem Beitritt steht (Datenschutz, PLAN.md 5f). */
+    const val JOIN_NOTICE =
+        "Alle Mitglieder sehen deinen Standort, solange du aufzeichnest und das Teilen in der Gruppe an ist. " +
+            "Du siehst alle, die gerade aufzeichnen. Du kannst das Teilen jederzeit ausschalten oder die Gruppe verlassen."
+}
+

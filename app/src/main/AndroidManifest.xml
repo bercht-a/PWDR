@@ -34,6 +34,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="pwdr" android:host="auth" />
                 <data android:scheme="pwdr" android:host="join" />
+                <data android:scheme="pwdr" android:host="group" />
             </intent-filter>
         </activity>
 

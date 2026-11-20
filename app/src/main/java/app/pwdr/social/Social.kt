@@ -168,7 +168,8 @@ object Social {
     fun handleDeepLink(intent: Intent?) {
         intent ?: return
         val data = intent.data ?: return
-        if (data.scheme == SupabaseConfig.AUTH_SCHEME && data.host == "join") {
+        // pwdr://join/CODE (Freund) und pwdr://group/CODE (Gruppe): beides läuft über denselben Code-Weg.
+        if (data.scheme == SupabaseConfig.AUTH_SCHEME && (data.host == "join" || data.host == "group")) {
             val code = data.pathSegments.firstOrNull()?.uppercase()
             if (!code.isNullOrBlank()) pendingJoinCode.value = code
             return
@@ -230,7 +231,9 @@ object Social {
         _inviteCode.value = client.postgrest.rpc("create_invite").decodeAs<String>()
     }
 
-    fun redeemInvite(code: String) = run("Einladung konnte nicht eingelöst werden") {
+    fun redeemInvite(code: String) = run("Einladung konnte nicht eingelöst werden") { redeemFriendCode(code) }
+
+    private suspend fun redeemFriendCode(code: String) {
         val result = client.postgrest.rpc("redeem_invite", buildJsonObject { put("p_code", code.trim()) })
             .decodeAsOrNull<String>()
         if (result == null) {
@@ -239,6 +242,55 @@ object Social {
             _message.value = "Ihr seid jetzt Freunde."
             refreshFriends()
         }
+    }
+
+    private val _joinPreview = MutableStateFlow<Pair<String, GroupPreview>?>(null)
+
+    /** Vorschau einer Gruppe, der man per Code beitreten kann: (Code, Gruppe). Die Oberfläche fragt vor dem Beitritt nach. */
+    val joinPreview: StateFlow<Pair<String, GroupPreview>?> = _joinPreview.asStateFlow()
+
+    /**
+     * Ein Code aus dem Eingabefeld oder aus einem Link: Freundes-Code wird eingelöst, bei einem Gruppen-Code erscheint zuerst
+     * die Vorschau. Fehlt `code_kind` im Backend (0006 nicht eingespielt), gilt der Code als Freundes-Code wie bisher.
+     */
+    fun handleCode(code: String) = run("Code konnte nicht geprüft werden") {
+        val clean = code.trim()
+        val kind = try {
+            client.postgrest.rpc("code_kind", buildJsonObject { put("p_code", clean) }).decodeAsOrNull<String>()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (!VisiblePeople.backendMissing(e.message.orEmpty())) throw e
+            "friend"
+        }
+        when (kind) {
+            "friend" -> redeemFriendCode(clean)
+            "group" -> {
+                val preview = client.postgrest.rpc("preview_group_invite", buildJsonObject { put("p_code", clean) })
+                    .decodeList<GroupPreview>().firstOrNull()
+                if (preview == null) _message.value = "Dieser Code ist ungültig, abgelaufen oder aufgebraucht."
+                else _joinPreview.value = clean.uppercase() to preview
+            }
+            else -> _message.value = "Dieser Code ist ungültig, abgelaufen oder schon benutzt."
+        }
+    }
+
+    fun confirmJoinGroup() {
+        val (code, preview) = _joinPreview.value ?: return
+        _joinPreview.value = null
+        run("Beitreten fehlgeschlagen") {
+            val id = client.postgrest.rpc("join_group", buildJsonObject { put("p_code", code) }).decodeAsOrNull<String>()
+            if (id == null) {
+                _message.value = "Dieser Code ist nicht mehr gültig."
+            } else {
+                _message.value = "Du bist jetzt in der Gruppe \"${preview.groupName}\"."
+                refreshGroups()
+            }
+        }
+    }
+
+    fun cancelJoinPreview() {
+        _joinPreview.value = null
     }
 
     fun removeFriend(id: String) = run("Freund konnte nicht entfernt werden") {
@@ -471,6 +523,8 @@ object Social {
         _invitations.value = emptyList()
         _viewers.value = emptyList()
         _people.value = emptyList()
+        _joinPreview.value = null
+        _groupInviteCode.value = null
         _share.value = ShareState()
         _live.value = emptyMap()
         _reports.value = emptyList()
