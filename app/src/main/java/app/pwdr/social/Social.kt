@@ -3,6 +3,7 @@ package app.pwdr.social
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import app.pwdr.tracking.TrackingStore
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.handleDeeplinks
 import io.github.jan.supabase.auth.providers.builtin.OTP
@@ -69,6 +70,31 @@ object Social {
     private val _share = MutableStateFlow(ShareState())
     val share: StateFlow<ShareState> = _share.asStateFlow()
 
+    // Gruppen (PLAN.md 5f): meine Gruppen, deren Mitglieder, Einladungen von Freunden, wer mich sieht, und die Vereinigung
+    // aus Freunden und Gruppenmitgliedern, die auf der Karte erscheinen kann.
+    private val _groups = MutableStateFlow<List<GroupRow>>(emptyList())
+    val groups: StateFlow<List<GroupRow>> = _groups.asStateFlow()
+
+    private val _groupMembers = MutableStateFlow<Map<String, List<GroupMemberRow>>>(emptyMap())
+
+    /** Mitglieder je Gruppen-ID (nur aktive Gruppen). */
+    val groupMembers: StateFlow<Map<String, List<GroupMemberRow>>> = _groupMembers.asStateFlow()
+
+    private val _invitations = MutableStateFlow<List<GroupInvitationRow>>(emptyList())
+
+    /** Einladungen von Freunden in Gruppen, die ich noch annehmen oder ablehnen kann. */
+    val invitations: StateFlow<List<GroupInvitationRow>> = _invitations.asStateFlow()
+
+    private val _viewers = MutableStateFlow<List<ViewerRow>>(emptyList())
+
+    /** Wer mich gerade sieht (Freunde und Gruppenmitglieder), nur während einer Freigabe gefüllt. */
+    val viewers: StateFlow<List<ViewerRow>> = _viewers.asStateFlow()
+
+    private val _people = MutableStateFlow<List<Person>>(emptyList())
+
+    /** Freunde und Gruppenmitglieder ohne Doppelte, die auf Karte und in der Sprachausgabe vorkommen. */
+    val people: StateFlow<List<Person>> = _people.asStateFlow()
+
     private val _live = MutableStateFlow<Map<String, LiveRow>>(emptyMap())
     val live: StateFlow<Map<String, LiveRow>> = _live.asStateFlow()
 
@@ -94,6 +120,8 @@ object Social {
 
     private var started = false
     private var liveJob: Job? = null
+    private var groupsJob: Job? = null
+    private var lastPeopleRefreshMs = 0L
     private var sharePrefs: SharePrefs? = null
 
     private val _autoShare = MutableStateFlow(true)
@@ -121,11 +149,13 @@ object Social {
                         _authState.value = AuthState.SIGNED_IN
                         refreshAll()
                         startRealtime()
+                        startGroupsLoop()
                     }
                     is SessionStatus.Initializing -> _authState.value = AuthState.LOADING
                     is SessionStatus.NotAuthenticated -> {
                         _authState.value = AuthState.SIGNED_OUT
                         stopRealtime()
+                        stopGroupsLoop()
                         clearLocalState()
                     }
                     // Aktualisieren der Sitzung scheiterte (z. B. kein Netz): angemeldet bleiben, später erneut versuchen.
@@ -261,9 +291,11 @@ object Social {
         }
         try {
             refreshFriends()
+            loadGroups()
             val ids = ShareTargets.select(_friends.value, _excluded.value)
-            if (ids.isEmpty()) {
-                _diag.value = _diag.value.copy(startNote = "keine Freunde ausgewählt")
+            // Gruppen brauchen keine Freigabe pro Freund, die Sicht ergibt sich aus der Mitgliedschaft. Es genügt also eine Gruppe.
+            if (ids.isEmpty() && !VisiblePeople.sharesWithAnyGroup(_groups.value, System.currentTimeMillis())) {
+                _diag.value = _diag.value.copy(startNote = "keine Freunde oder Gruppen ausgewählt")
                 return
             }
             _diag.value = _diag.value.copy(startNote = null)
@@ -383,7 +415,9 @@ object Social {
     private suspend fun refreshAll() {
         refreshProfile()
         refreshFriends()
+        refreshGroups()
         refreshShare()
+        refreshViewers()
     }
 
     private suspend fun refreshProfile() {
@@ -404,6 +438,7 @@ object Social {
             Log.w(TAG, "Freunde laden: $e")
             return
         }
+        recomputePeople()
         syncAutoTargets()
     }
 
@@ -431,6 +466,11 @@ object Social {
         _profile.value = null
         _profileLoaded.value = false
         _friends.value = emptyList()
+        _groups.value = emptyList()
+        _groupMembers.value = emptyMap()
+        _invitations.value = emptyList()
+        _viewers.value = emptyList()
+        _people.value = emptyList()
         _share.value = ShareState()
         _live.value = emptyMap()
         _reports.value = emptyList()
@@ -490,7 +530,208 @@ object Social {
     private fun upsertLive(row: LiveRow, me: String?) {
         if (row.userId == me) return
         _live.value = _live.value + (row.userId to row)
+        // Neue Freunde oder Gruppenmitglieder sind erst nach dem Auffrischen der Listen mit Namen bekannt.
+        if (_people.value.none { it.friend.friendId == row.userId }) requestPeopleRefresh()
     }
+
+    // ---------------------------------------------------------------- Gruppen
+
+    private const val GROUPS_POLL_MS = 60_000L
+    private const val PEOPLE_REFRESH_MIN_MS = 30_000L
+
+    private fun startGroupsLoop() {
+        groupsJob?.cancel()
+        groupsJob = scope.launch {
+            while (isActive) {
+                delay(GROUPS_POLL_MS)
+                refreshGroups()
+                if (_share.value.active) refreshViewers()
+            }
+        }
+    }
+
+    private fun stopGroupsLoop() {
+        groupsJob?.cancel()
+        groupsJob = null
+    }
+
+    /** Lädt Gruppen, Mitglieder und Einladungen. Fehlt die Funktion im Backend (0006 nicht eingespielt), bleibt alles leer. */
+    private suspend fun loadGroups() {
+        val now = System.currentTimeMillis()
+        try {
+            val groups = client.postgrest.rpc("list_groups").decodeList<GroupRow>()
+            val members = HashMap<String, List<GroupMemberRow>>()
+            for (g in groups) {
+                if (!g.isActive(now)) continue
+                try {
+                    members[g.groupId] = client.postgrest.rpc("list_group_members", buildJsonObject { put("p_group", g.groupId) })
+                        .decodeList<GroupMemberRow>()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Mitglieder laden: $e")
+                    _groupMembers.value[g.groupId]?.let { members[g.groupId] = it }  // letzten Stand behalten
+                }
+            }
+            val invitations = client.postgrest.rpc("list_group_invitations").decodeList<GroupInvitationRow>()
+            _groups.value = groups
+            _groupMembers.value = members
+            _invitations.value = invitations
+            _diag.value = _diag.value.copy(groupCount = groups.size, groupMembers = members.values.sumOf { it.size }, groupsNote = null)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val text = e.message.orEmpty()
+            if (VisiblePeople.backendMissing(text)) {
+                _groups.value = emptyList()
+                _groupMembers.value = emptyMap()
+                _invitations.value = emptyList()
+                _diag.value = _diag.value.copy(groupCount = 0, groupMembers = 0, groupsNote = "im Backend nicht eingespielt (0006)")
+            } else {
+                Log.w(TAG, "Gruppen laden: $e")
+                _diag.value = _diag.value.copy(groupsNote = "Fehler (${text.lineSequence().first().take(80)})")
+            }
+        }
+        recomputePeople()
+    }
+
+    /** Wie [loadGroups] und startet das Teilen, falls gerade aufgezeichnet wird und eine Gruppe neu dazukam. */
+    private suspend fun refreshGroups() {
+        loadGroups()
+        if (_share.value.active || !_autoShare.value || !TrackingStore.recording.value) return
+        if (VisiblePeople.sharesWithAnyGroup(_groups.value, System.currentTimeMillis())) startAutoShare()
+    }
+
+    private suspend fun refreshViewers() {
+        try {
+            _viewers.value = client.postgrest.rpc("my_viewers").decodeList<ViewerRow>()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (!VisiblePeople.backendMissing(e.message.orEmpty())) Log.w(TAG, "Wer sieht mich: $e")
+            _viewers.value = emptyList()
+        }
+    }
+
+    private fun recomputePeople() {
+        val me = client.auth.currentUserOrNull()?.id
+        _people.value = VisiblePeople.merge(_friends.value, _groups.value, _groupMembers.value, me, System.currentTimeMillis())
+    }
+
+    /** Frischt Freunde und Gruppen auf, höchstens alle 30 Sekunden. */
+    private fun requestPeopleRefresh() {
+        val now = System.currentTimeMillis()
+        if (now - lastPeopleRefreshMs < PEOPLE_REFRESH_MIN_MS) return
+        lastPeopleRefreshMs = now
+        scope.launch {
+            refreshFriends()
+            loadGroups()
+        }
+    }
+
+    /** Für die Oberfläche: Gruppen, Mitglieder und Einladungen neu laden. */
+    fun refreshGroupsNow() {
+        scope.launch {
+            refreshGroups()
+            if (_share.value.active) refreshViewers()
+        }
+    }
+
+    /** Gruppe erstellen, optional gleich Freunde einladen. [days] null = unbegrenzt. */
+    fun createGroup(name: String, days: Int?, friendIds: List<String> = emptyList()) = run("Gruppe konnte nicht erstellt werden") {
+        val id = client.postgrest.rpc(
+            "create_group",
+            buildJsonObject {
+                put("p_name", name)
+                put("p_days", days)
+            },
+        ).decodeAs<String>()
+        if (friendIds.isNotEmpty()) inviteFriendsCall(id, friendIds)
+        refreshGroups()
+    }
+
+    fun renameGroup(groupId: String, name: String) = groupCall("Umbenennen fehlgeschlagen", "rename_group", groupId) { put("p_name", name) }
+
+    /** [days] null = unbegrenzt. */
+    fun extendGroup(groupId: String, days: Int?) = groupCall("Verlängern fehlgeschlagen", "extend_group", groupId) { put("p_days", days) }
+
+    fun deleteGroup(groupId: String) = groupCall("Löschen fehlgeschlagen", "delete_group", groupId) {}
+
+    fun leaveGroup(groupId: String) = groupCall("Austreten fehlgeschlagen", "leave_group", groupId) {}
+
+    fun removeMember(groupId: String, userId: String) = groupCall("Entfernen fehlgeschlagen", "remove_member", groupId) { put("p_user", userId) }
+
+    fun setGroupSharing(groupId: String, on: Boolean) = groupCall("Teilen konnte nicht geändert werden", "set_group_sharing", groupId) { put("p_on", on) }
+
+    fun setGroupAnnounce(groupId: String, on: Boolean) = groupCall("Ansagen konnten nicht geändert werden", "set_group_announce", groupId) { put("p_on", on) }
+
+    fun inviteFriendsToGroup(groupId: String, friendIds: List<String>) = run("Einladen fehlgeschlagen") {
+        val n = inviteFriendsCall(groupId, friendIds)
+        if (n == 0) _message.value = "Niemand eingeladen (schon Mitglied, schon eingeladen oder kein Freund)."
+        refreshGroups()
+    }
+
+    private suspend fun inviteFriendsCall(groupId: String, friendIds: List<String>): Int =
+        client.postgrest.rpc(
+            "invite_friends_to_group",
+            buildJsonObject {
+                put("p_group", groupId)
+                put("p_friends", JsonArray(friendIds.map { JsonPrimitive(it) }))
+            },
+        ).decodeAs<Int>()
+
+    fun acceptGroupInvitation(groupId: String) = groupCall("Beitreten fehlgeschlagen", "accept_group_invitation", groupId) {}
+
+    fun declineGroupInvitation(groupId: String) = groupCall("Ablehnen fehlgeschlagen", "decline_group_invitation", groupId) {}
+
+    fun cancelGroupInvitation(groupId: String, friendId: String) =
+        groupCall("Zurückziehen fehlgeschlagen", "cancel_group_invitation", groupId) { put("p_friend", friendId) }
+
+    private val _groupInviteCode = MutableStateFlow<Pair<String, String>?>(null)
+
+    /** Zuletzt erzeugter Gruppen-Code als (Gruppen-ID, Code). */
+    val groupInviteCode: StateFlow<Pair<String, String>?> = _groupInviteCode.asStateFlow()
+
+    fun clearGroupInviteCode() {
+        _groupInviteCode.value = null
+    }
+
+    fun createGroupInvite(groupId: String, maxUses: Int = 10) = run("Code konnte nicht erstellt werden") {
+        val code = client.postgrest.rpc(
+            "create_group_invite",
+            buildJsonObject {
+                put("p_group", groupId)
+                put("p_max_uses", maxUses)
+            },
+        ).decodeAs<String>()
+        _groupInviteCode.value = groupId to code
+    }
+
+    fun revokeGroupInvites(groupId: String) = groupCall("Widerrufen fehlgeschlagen", "revoke_group_invites", groupId) {}
+
+    /** Offene Einladungen an Freunde (nur Ersteller). Leer bei Fehlern. */
+    suspend fun loadPending(groupId: String): List<GroupPendingRow> = try {
+        client.postgrest.rpc("list_group_pending", buildJsonObject { put("p_group", groupId) }).decodeList<GroupPendingRow>()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "Offene Einladungen laden: $e")
+        emptyList()
+    }
+
+    /** Ruft eine Gruppen-Funktion mit p_group und weiteren Parametern auf und lädt danach Gruppen und Freigabe neu. */
+    private fun groupCall(errorText: String, function: String, groupId: String, extra: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit) =
+        run(errorText) {
+            client.postgrest.rpc(
+                function,
+                buildJsonObject {
+                    put("p_group", groupId)
+                    extra()
+                },
+            )
+            refreshGroups()
+            if (_share.value.active) refreshViewers()
+        }
 
     // ---------------------------------------------------------------- Meldungen
 
@@ -577,6 +818,14 @@ object Social {
             "too_many_attempts" in text -> "Zu viele Fehlversuche. Bitte in einer Stunde noch einmal versuchen."
             "too_many_invites" in text -> "Zu viele offene Einladungen. Bitte erst einlösen oder ablaufen lassen."
             "no_active_share" in text -> "Es läuft keine Freigabe."
+            "not_owner" in text -> "Das darf nur der Ersteller der Gruppe."
+            "group_full" in text -> "Die Gruppe ist voll (höchstens 20 Mitglieder, offene Einladungen eingerechnet)."
+            "group_expired" in text -> "Die Gruppe ist abgelaufen. Bitte zuerst verlängern."
+            "too_many_groups" in text -> "Du hast schon 5 eigene Gruppen. Bitte erst eine löschen."
+            "too_many_memberships" in text -> "Du bist schon in 10 Gruppen. Bitte erst eine verlassen."
+            "invalid_name" in text -> "Der Gruppenname muss 1 bis 30 Zeichen lang sein."
+            "no_invitation" in text -> "Diese Einladung gibt es nicht mehr."
+            "not_a_member" in text -> "Du bist nicht Mitglied dieser Gruppe."
             "rate limit" in text.lowercase() || "over_email_send_rate_limit" in text ->
                 "Zu viele E-Mails angefordert. Bitte kurz warten."
             "Unable to resolve host" in text || "timeout" in text.lowercase() || "Failed to connect" in text ->

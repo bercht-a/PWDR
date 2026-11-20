@@ -381,7 +381,8 @@ internal fun OsmLayersEffect(style: Style?) {
 @Composable
 internal fun FriendsLayerEffect(style: Style?) {
     val live by Social.live.collectAsState()
-    val friends by Social.friends.collectAsState()
+    val people by Social.people.collectAsState()
+    val friends = remember(people) { people.map { it.friend } }
     val now by produceState(System.currentTimeMillis()) {
         while (true) {
             delay(10_000)
@@ -415,7 +416,8 @@ internal fun FriendsLayerEffect(style: Style?) {
 @Composable
 internal fun FriendsLegend(modifier: Modifier = Modifier) {
     val live by Social.live.collectAsState()
-    val friends by Social.friends.collectAsState()
+    val people by Social.people.collectAsState()
+    val friends = remember(people) { people.map { it.friend } }
     val now by produceState(System.currentTimeMillis()) {
         while (true) {
             delay(10_000)

@@ -11,10 +11,14 @@ data class ShareDiag(
     val realtime: String = "verbindet…",
     /** Eine Position wurde nicht gesendet (z. B. GPS zu ungenau), mit Grund. */
     val skipNote: String? = null,
+    /** Gruppen: Anzahl, geladene Mitglieder und ein Hinweis, falls das Laden nicht klappt (zum Beispiel Backend ohne Gruppen). */
+    val groupCount: Int = 0,
+    val groupMembers: Int = 0,
+    val groupsNote: String? = null,
 )
 
 object ShareDiagText {
-    /** Zeilen für die Statusanzeige. [visible] = Freunde, die gerade auf der Karte erscheinen, [rows] = erhaltene Zeilen. */
+    /** Zeilen für die Statusanzeige. [visible] = Personen, die gerade auf der Karte erscheinen, [rows] = erhaltene Zeilen. */
     fun lines(d: ShareDiag, shareActive: Boolean, recording: Boolean, visible: Int, rows: Int, nowMs: Long): List<String> {
         val out = mutableListOf<String>()
         out += when {
@@ -29,7 +33,9 @@ object ShareDiagText {
         }
         d.lastError?.let { out += "Sendefehler: $it" }
         out += "Live-Verbindung: ${d.realtime}"
-        out += "Empfangen: $rows Freunde senden, $visible auf der Karte"
+        if (d.groupsNote != null) out += "Gruppen: ${d.groupsNote}"
+        else if (d.groupCount > 0) out += "Gruppen: ${d.groupCount} (${d.groupMembers} Mitglieder geladen)"
+        out += "Empfangen: $rows Personen senden, $visible auf der Karte"
         return out
     }
 }

@@ -67,7 +67,7 @@ class VoiceController(context: Context) {
     fun onPosition(lat: Double, lon: Double, alt: Double?, activity: Activity, nowMs: Long = System.currentTimeMillis()) {
         val s = store.load()
         if (!s.friendsEnabled) return
-        val nearby = ProximityAnnouncer.nearbyFrom(Social.friends.value, Social.live.value)
+        val nearby = ProximityAnnouncer.nearbyFrom(Social.people.value.filter { it.announce }.map { it.friend }, Social.live.value)
         for (e in proximity.onUpdate(OwnPosition(lat, lon, alt, activity), nearby, s.mutedFriendIds, nowMs)) {
             val text = if (e.names.size == 1 && e.distanceM != null) {
                 SpeechText.friendNear(e.names[0], e.distanceM, e.safety)

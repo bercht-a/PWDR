@@ -365,7 +365,8 @@ private fun FriendsContent() {
         // Status zur Fehlersuche
         item {
             val diag by Social.diag.collectAsState()
-            val visible = FriendsOnMap.markers(live, friends, now).size
+            val people by Social.people.collectAsState()
+            val visible = FriendsOnMap.markers(live, people.map { it.friend }, now).size
             Card {
                 Text("Status", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                 ShareDiagText.lines(diag, share.active, recording, visible, live.size, now).forEach {
