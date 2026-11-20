@@ -15,6 +15,8 @@ Backend für Freunde und Live-Standort, siehe PLAN.md Abschnitt 5c. Die privaten
      Erzeugen eines Einladungscodes. **Wer 0001 und 0002 schon eingespielt hat, führt nur 0003 aus** (wiederholbar).
    - `0004_reports.sql`: Community-Meldungen (Phase 7)
    - `0005_report_apres.sql`: Meldungstyp Après-Ski. **Wer 0004 schon eingespielt hat, führt nur 0005 aus** (wiederholbar).
+   - `0006_groups.sql`: Gruppen (Tabellen, Funktionen, erweiterte Sichtbarkeit des Live-Standorts). Die App nutzt sie noch nicht,
+     die Migration lässt sich aber schon einspielen. Sie ändert `can_view_location`, `delete_account` und `cleanup_expired`.
 
    Danach unter *Database > Extensions* prüfen, dass `postgis`, `pgcrypto` und `pg_cron` aktiv sind
    (`pg_cron` ggf. einschalten und die letzte Anweisung von 0001 mit `cron.schedule(...)` einzeln ausführen).
@@ -41,7 +43,7 @@ backend/test/run-tests.sh
 ```
 
 Das Skript startet eine Postgres-Datenbank mit PostGIS, bildet die Supabase-Umgebung nach (Rollen, `auth.users`,
-`auth.uid()`, Erweiterungen im Schema `extensions`), spielt die Migration ein und führt `10_rls_tests.sql` und `11_reports_tests.sql` aus. Am Ende steht `ALLE TESTS BESTANDEN`.
+`auth.uid()`, Erweiterungen im Schema `extensions`), spielt die Migration ein und führt `10_rls_tests.sql`, `11_reports_tests.sql` und `12_groups_tests.sql` aus. Am Ende steht `ALLE TESTS BESTANDEN`.
 Die Tests prüfen vor allem, was **nicht** sichtbar sein darf: Fremde, Blockierte, abgelaufene und beendete Freigaben.
 
 ## Aufbau
@@ -52,6 +54,8 @@ Die Tests prüfen vor allem, was **nicht** sichtbar sein darf: Fremde, Blockiert
 | `test/00_supabase_stubs.sql` | Nachbau von Rollen und `auth.*` für den lokalen Test |
 | `test/10_rls_tests.sql` | Tests der Zugriffsregeln und Funktionen |
 | `test/11_reports_tests.sql` | Tests der Community-Meldungen |
+| `test/12_groups_tests.sql` | Tests der Gruppen (Sichtbarkeit, Einladungen, Grenzen, Eigentümerwechsel) |
+| `supabase/migrations/0006_groups.sql` | Gruppen: Tabellen, Funktionen, Sichtbarkeit über gemeinsame Gruppen |
 | `supabase/migrations/0004_reports.sql` | Meldungen: Tabellen, Funktionen, Aufräumen |
 | `test/run-tests.sh` | Startet Docker-Postgres und führt alles aus |
 
@@ -71,7 +75,16 @@ Die Tests prüfen vor allem, was **nicht** sichtbar sein darf: Fremde, Blockiert
 | `list_reports(lat, lon, radius_m)` | Meldungen im Umkreis, ohne abgelaufene und ohne stark widersprochene |
 | `vote_report(id, stimme)` | 1, -1 oder 0 (zurücknehmen), nicht für die eigene Meldung |
 | `delete_report(id)` | Eigene Meldung löschen |
-| `delete_account()` | Konto mit allen Daten löschen (auch Meldungen und Stimmen) |
+| `delete_account()` | Konto mit allen Daten löschen (auch Meldungen und Stimmen). Gruppen gehen an das nächste Mitglied |
+| `create_group(name, tage)` | Gruppe erstellen (Name 1 bis 30 Zeichen, Laufzeit 1 bis 366 Tage, `null` = unbegrenzt, Standard 7). Höchstens 5 eigene |
+| `list_groups()`, `list_group_members(gruppe)`, `list_group_pending(gruppe)` | Meine Gruppen, deren Mitglieder (nur für Mitglieder), offene Einladungen (nur Ersteller) |
+| `rename_group`, `extend_group(gruppe, tage)`, `delete_group`, `remove_member`, `leave_group` | Verwalten (Ersteller) und Austreten. Der Ersteller kann nicht allein austreten, die Gruppe geht dann an das nächste Mitglied |
+| `set_group_sharing(gruppe, an)`, `set_group_announce(gruppe, an)` | Eigenen Standort in der Gruppe teilen, Ansagen für die Gruppe |
+| `create_group_invite(gruppe, max)`, `revoke_group_invites(gruppe)` | Code (6 Zeichen, 24 h, 1 bis 20 Beitritte, höchstens 5 offene), nur Ersteller |
+| `code_kind(code)`, `preview_group_invite(code)`, `join_group(code)` | Code erkennen (`friend`, `group`, `null`), Vorschau ohne Beitritt, beitreten. Fehlversuche zählen gemeinsam mit den Freundes-Codes |
+| `invite_friends_to_group(gruppe, freunde[])` | Bestehende Freunde einladen (nur Ersteller). Der Freund muss annehmen, 7 Tage gültig |
+| `list_group_invitations()`, `accept_group_invitation`, `decline_group_invitation`, `cancel_group_invitation` | Einladungen an mich, annehmen, ablehnen, zurückziehen |
+| `my_viewers()` | Wer sieht mich gerade (Freunde und Gruppenmitglieder, ohne Doppelte) |
 
 Lesen läuft direkt über die Tabellen mit Row Level Security (`profiles`, `friendships`, `share_sessions`,
 `share_targets`, `live_locations`). Die Positionen der Freunde kommen per Realtime (Postgres Changes) auf `live_locations`.
