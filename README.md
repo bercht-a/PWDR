@@ -6,7 +6,7 @@ PWDR zeichnet einen Skitag auf, erkennt Lift, Abfahrt und Pause, wertet jede Abf
 Höhenmetern. Dazu kommen Sprachausgabe im Kopfhörer, Freunde live auf der Karte sowie Wetter, Schnee, Lawinenbulletin und Webcams
 für das Skigebiet. Es ist ein Privatprojekt ohne Skipass-Anbindung. Fahrten bleiben auf dem Handy.
 
-**Stand:** Alpha `0.1.0-alpha.10`. Getestet im Emulator und mit simulierten Strecken, **noch nicht auf einer echten Skifahrt**.
+**Stand:** Alpha `0.1.0-alpha.11`. Getestet im Emulator und mit simulierten Strecken, **noch nicht auf einer echten Skifahrt**.
 Die Erkennung von Lift und Abfahrt ist der Teil mit dem größten Risiko und braucht echte Testfahrten.
 
 ## Funktionen
@@ -27,7 +27,7 @@ weitere Skigebiete. Alle Entscheidungen, Recherchen und die Roadmap stehen in [P
 
 ## Alpha-Version installieren
 
-1. Die Datei `pwdr-0.1.0-alpha.10.apk` aufs Handy bringen (Messenger, Cloud-Speicher oder USB).
+1. Die Datei `pwdr-0.1.0-alpha.11.apk` aufs Handy bringen (Messenger, Cloud-Speicher oder USB).
 2. Öffnen und die Installation erlauben. Android fragt einmal, ob Apps aus dieser Quelle installiert werden dürfen.
 3. Beim ersten Aufzeichnen **Standort** ("Beim Verwenden der App") und **Benachrichtigungen** erlauben.
 4. Für lange Aufzeichnungen die Akku-Optimierung für PWDR ausschalten. Manche Hersteller (Xiaomi, Samsung, Huawei) beenden sonst

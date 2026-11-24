@@ -24,7 +24,7 @@ object SupabaseConfig {
      * Öffentlicher Website-Schlüssel (sitekey) von hCaptcha für den Anmelde-Link. Leer = kein Captcha in der App.
      * Erst eintragen, wenn das Captcha auch in Supabase eingeschaltet ist (backend/README.md), sonst passt beides nicht zusammen.
      */
-    const val HCAPTCHA_SITE_KEY = ""
+    const val HCAPTCHA_SITE_KEY = "c7a67234-0660-453a-8500-a7a430c2d82e"
 }
 
 object Backend {
